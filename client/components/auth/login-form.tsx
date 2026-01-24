@@ -8,6 +8,7 @@ import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { apiClient } from "@/lib/api/client";
 
+// Login form component for user authentication
 function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
