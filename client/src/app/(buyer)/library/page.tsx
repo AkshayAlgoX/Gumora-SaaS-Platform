@@ -72,5 +72,3 @@ export default function LibraryPage() {
     </BuyerShell>
   );
 }
-
-export default LibraryPage;
