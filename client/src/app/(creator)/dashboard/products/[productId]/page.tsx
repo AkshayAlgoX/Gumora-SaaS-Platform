@@ -4,31 +4,9 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import ProductEditor from "../../../../../../components/creator/dashboard/products/product-editor/product-editor";
+import { Product, ImageAsset } from "@/lib/types/product";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
-
-type Product = {
-  _id: string;
-  title: string;
-  description: string;
-  price: number;
-  currency: string;
-  visibility: string;
-  coverImageAssetId: string | null;
-  slug: string;
-  stats: { assetCount: number; soldCount: number };
-};
-
-type ImageAsset = {
-  _id: string;
-  cloudinary: {
-    publicId: string;
-    secureUrl: string;
-    width: number;
-    height: number;
-  };
-  orderIndex: number;
-};
 
 export default function ProductEditorPage() {
   const params = useParams();
