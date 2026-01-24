@@ -1,6 +1,5 @@
 "use client";
 
-// Rebuild trigger
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import BuyerShell from "../../../../components/buyer/common/buyer-shell";
@@ -24,18 +23,16 @@ export default function LibraryPage() {
   useEffect(() => {
     const checkAuthAndLoadLibrary = async () => {
       try {
-        // Check auth
         const meRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/me`, {
           credentials: "include",
         });
         const meData = await meRes.json();
-        
+
         if (!meData?.user) {
           router.push("/login");
           return;
         }
 
-        // Load library
         const libRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/library`, {
           credentials: "include",
         });
