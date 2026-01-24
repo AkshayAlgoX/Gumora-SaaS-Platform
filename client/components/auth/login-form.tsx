@@ -19,13 +19,11 @@ function LoginForm() {
 
     try {
 
-      const loginRes = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
-      });
+      const loginRes = await apiClient.post("/api/auth/login", {
+  email,
+  password,
+});
+
 
       const loginData = await loginRes.json();
 

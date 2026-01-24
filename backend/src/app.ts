@@ -18,9 +18,7 @@ export function createApp(){
 
     app.use(
         cors({
-            origin : [ process.env.FRONTEND_ORIGIN,
-                      "https://gamora-saas-platform.vercel.app",
-            ],
+            origin : "https://gamora-saas-platform.vercel.app",
             credentials : true
         })
     );
