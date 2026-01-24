@@ -16,6 +16,7 @@ type Product = {
   visibility: string;
   coverImageAssetId: string | null;
   slug: string;
+  stats: { assetCount: number; soldCount: number };
 };
 
 type ImageAsset = {

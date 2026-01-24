@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import RegisterForm from "../../../../components/auth/register-form";
@@ -9,6 +9,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export default function RegisterPage() {
   const router = useRouter();
+  const [checking, setChecking] = useState(true);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -18,15 +19,26 @@ export default function RegisterPage() {
         });
         const data = await res.json();
         if (data?.user) {
-          router.push("/dashboard");
+          // Already logged in - go back to previous page
+          router.back();
+          return;
         }
       } catch (err) {
         console.error("Auth check error:", err);
       }
+      setChecking(false);
     };
 
     checkAuth();
   }, [router]);
+
+  if (checking) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <span>Loading...</span>
+      </div>
+    );
+  }
 
   return (
     <>
