@@ -18,7 +18,7 @@ function LoginForm() {
     setLoading(true);
 
     try {
-      const loginRes = await fetch("/api/_proxy/auth/login", {
+      const loginRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
