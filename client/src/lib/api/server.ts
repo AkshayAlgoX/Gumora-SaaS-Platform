@@ -1,13 +1,17 @@
 import "server-only";
 import { cookies } from "next/headers";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL!;
+// Always use proxy on same origin for consistent cookie handling
+const API_BASE_URL = "";
 
 export async function apiServerGet<T>(path: string): Promise<T> {
   const cookieStore = await cookies();
 
   try {
-    const res = await fetch(`${API_BASE_URL}${path}`, {
+    // Use proxy route - same origin, cookies work!
+    const url = `/api${path}`;
+    
+    const res = await fetch(url, {
       method: "GET",
       headers: { cookie: cookieStore.toString() },
       credentials: "include",
@@ -39,7 +43,10 @@ export async function apiServerPost<T>(path: string,body:unknown): Promise<T> {
   const cookieStore = await cookies();
 
   try {
-    const res = await fetch(`${API_BASE_URL}${path}`, {
+    // Use proxy route - same origin, cookies work!
+    const url = `/api${path}`;
+    
+    const res = await fetch(url, {
       method: "POST",
       headers: { 
           "content-type" : "application/json",
