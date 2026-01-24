@@ -16,9 +16,23 @@ export function createApp(){
 
     const app = express();
 
+    const allowedOrigins = [
+        "https://gamora-saas-platform.vercel.app",
+        /^https:\/\/gamora-saas-platform-.*\.vercel\.app$/,
+        process.env.FRONTEND_ORIGIN || "http://localhost:3000",
+    ];
+
     app.use(
         cors({
-            origin : "https://gamora-saas-platform.vercel.app",
+            origin: (origin, callback) => {
+                if (!origin || allowedOrigins.some(allowed => 
+                    typeof allowed === 'string' ? allowed === origin : allowed.test(origin)
+                )) {
+                    callback(null, true);
+                } else {
+                    callback(new Error('CORS not allowed'));
+                }
+            },
             credentials : true
         })
     );
