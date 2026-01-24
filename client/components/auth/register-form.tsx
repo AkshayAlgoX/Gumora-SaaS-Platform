@@ -5,9 +5,6 @@ import { toast } from "sonner";
 import { Card } from "../ui/card";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
-import { apiClient } from "@/lib/api/client";
-
-
 
 function RegisterForm() {
   const router = useRouter();
@@ -17,27 +14,40 @@ function RegisterForm() {
   const [loading, setLoading] = useState(false);
 
   async function handleOnSubmit(event: React.FormEvent) {
-  event.preventDefault();
-  setLoading(true);
+    event.preventDefault();
+    setLoading(true);
 
-  try {
-    const res = await apiClient.post("/api/auth/register",{
-        name,email,password
-    });
-    if (res?.data?.ok) {
-  toast.success(
-    res?.data?.message || "Account created. Please log in..."
-  );
-  router.push("/login");
-  router.refresh();
-}
+    try {
+      const res = await fetch("/api/_proxy/auth/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name,
+          email,
+          password,
+        }),
+        credentials: "include",
+      });
 
-  } catch (e) {
-    console.log(e);
-  } finally {
-    setLoading(false);
+      const data = await res.json();
+      if (data?.ok) {
+        toast.success(
+          data?.message || "Account created. Please log in..."
+        );
+        router.push("/login");
+        router.refresh();
+      } else {
+        toast.error(data?.error || "Registration failed");
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("Registration failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   }
-}
 
 
 
