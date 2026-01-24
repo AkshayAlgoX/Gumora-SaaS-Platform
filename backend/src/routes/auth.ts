@@ -91,9 +91,12 @@ authRouter.post("/login", async(req, res)=> {
     const token = signJwt({userId : String(user._id)})
     
     res.cookie(process.env.COOKIE_NAME!, token, {
-    httpOnly : true,
-    sameSite : "lax",
-    secure : false
+        res.cookie(process.env.COOKIE_NAME!, token, {
+  httpOnly: true,
+  secure: true,
+  sameSite: "none",
+  maxAge: 7 * 24 * 60 * 60 * 1000, 
+});
     })
 
     
@@ -121,10 +124,11 @@ return res.json({
 authRouter.post("/logout", async(req, res)=> {
     try{
         res.clearCookie(process.env.COOKIE_NAME!, {
-            httpOnly : true,
-            sameSite : "lax",
-            secure : false
-        })
+  httpOnly: true,
+  secure: true,
+  sameSite: "none",
+});
+
 
         return res.json({ok: true})
     }catch(err){
