@@ -11,8 +11,15 @@ out/
 
 # env files
 .env
-.env.*
+.env.local
+.env.development
+.env.production
+.env.test
 **/.env
+
+# BUT allow .env.example files
+!.env.example
+!**/.env.example
 
 # logs
 *.log
