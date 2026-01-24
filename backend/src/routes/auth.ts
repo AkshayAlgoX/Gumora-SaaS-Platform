@@ -6,7 +6,6 @@ import { requireAuth, AuthedRequest } from "../middleware/requireAuth";
 export const authRouter = Router();
 
 /* ================= REGISTER ================= */
-
 authRouter.post("/register", async (req, res) => {
   try {
     const { name, email, password } = req.body ?? {};
@@ -47,8 +46,8 @@ authRouter.post("/register", async (req, res) => {
         isCreator: user.isCreator,
       },
     });
-  } catch (e) {
-    console.error(e);
+  } catch (err) {
+    console.error(err);
     return res.status(500).json({
       ok: false,
       error: "Internal server error",
@@ -57,7 +56,6 @@ authRouter.post("/register", async (req, res) => {
 });
 
 /* ================= LOGIN ================= */
-
 authRouter.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body ?? {};
@@ -94,6 +92,7 @@ authRouter.post("/login", async (req, res) => {
 
     const token = signJwt({ userId: String(user._id) });
 
+    // ✅ PRODUCTION-SAFE COOKIE
     res.cookie(process.env.COOKIE_NAME!, token, {
       httpOnly: true,
       secure: true,
@@ -110,8 +109,8 @@ authRouter.post("/login", async (req, res) => {
         isCreator: user.isCreator,
       },
     });
-  } catch (e) {
-    console.error(e);
+  } catch (err) {
+    console.error(err);
     return res.status(500).json({
       ok: false,
       error: "Internal server error",
@@ -120,7 +119,6 @@ authRouter.post("/login", async (req, res) => {
 });
 
 /* ================= LOGOUT ================= */
-
 authRouter.post("/logout", async (_req, res) => {
   try {
     res.clearCookie(process.env.COOKIE_NAME!, {
@@ -130,8 +128,8 @@ authRouter.post("/logout", async (_req, res) => {
     });
 
     return res.json({ ok: true });
-  } catch (e) {
-    console.error(e);
+  } catch (err) {
+    console.error(err);
     return res.status(500).json({
       ok: false,
       error: "Internal server error",
@@ -139,16 +137,7 @@ authRouter.post("/logout", async (_req, res) => {
   }
 });
 
-/* ================= ME (PROTECTED) ================= */
-
+/* ================= ME ================= */
 authRouter.get("/me", requireAuth, async (req: AuthedRequest, res) => {
-  try {
-    return res.json({ ok: true, user: req.user });
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({
-      ok: false,
-      error: "Internal server error",
-    });
-  }
+  return res.json({ ok: true, user: req.user });
 });
