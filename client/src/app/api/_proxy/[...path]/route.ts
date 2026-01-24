@@ -17,30 +17,45 @@ export async function DELETE(req: NextRequest, { params }: any) {
 }
 
 async function handle(req: NextRequest, params: { path: string[] }) {
-  const backendUrl =
-    `${process.env.NEXT_PUBLIC_API_URL}/api/${params.path.join("/")}`;
+  try {
+    const backendUrl =
+      `${process.env.NEXT_PUBLIC_API_URL}/api/${params.path.join("/")}`;
 
-  const backendRes = await fetch(backendUrl, {
-    method: req.method,
-    headers: {
-      "Content-Type": "application/json",
-      cookie: req.headers.get("cookie") || "",
-    },
-    body:
-      req.method === "GET" ? undefined : await req.text(),
-    credentials: "include",
-  });
+    console.log(`[Proxy] ${req.method} ${backendUrl}`);
 
-  const data = await backendRes.text();
+    const body =
+      req.method === "GET" ? undefined : await req.text();
 
-  const res = new NextResponse(data, {
-    status: backendRes.status,
-  });
+    const backendRes = await fetch(backendUrl, {
+      method: req.method,
+      headers: {
+        "Content-Type": "application/json",
+        cookie: req.headers.get("cookie") || "",
+      },
+      body: body,
+      credentials: "include",
+    });
 
-  const setCookie = backendRes.headers.get("set-cookie");
-  if (setCookie) {
-    res.headers.set("set-cookie", setCookie);
+    const data = await backendRes.text();
+
+    const res = new NextResponse(data, {
+      status: backendRes.status,
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    const setCookie = backendRes.headers.get("set-cookie");
+    if (setCookie) {
+      res.headers.set("set-cookie", setCookie);
+    }
+
+    return res;
+  } catch (error) {
+    console.error("[Proxy Error]", error);
+    return new NextResponse(
+      JSON.stringify({ ok: false, error: "Proxy error" }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
   }
-
-  return res;
 }
