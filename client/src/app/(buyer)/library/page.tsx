@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import BuyerShell from "../../../../components/buyer/common/buyer-shell";
 import LibraryClient from "../../../../components/buyer/library/library-client";
 
-export type LibraryItem = {
+type LibraryItem = {
   productId: string;
   title: string;
   price: number;
@@ -13,15 +13,13 @@ export type LibraryItem = {
   paidAt: string | null;
 };
 
-export type LibraryRes = { ok: boolean; items: LibraryItem[]; error?: string };
-
-export default function LibraryPage() {
+function LibraryPageComponent() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [items, setItems] = useState<LibraryItem[]>([]);
 
   useEffect(() => {
-    const checkAuthAndLoadLibrary = async () => {
+    const load = async () => {
       try {
         const meRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/me`, {
           credentials: "include",
@@ -39,14 +37,14 @@ export default function LibraryPage() {
         const libData = await libRes.json();
         setItems(libData.items ?? []);
       } catch (err) {
-        console.error("Error loading library:", err);
+        console.error("Library error:", err);
         router.push("/login");
       } finally {
         setIsLoading(false);
       }
     };
 
-    checkAuthAndLoadLibrary();
+    load();
   }, [router]);
 
   if (isLoading) {
@@ -70,3 +68,5 @@ export default function LibraryPage() {
     </BuyerShell>
   );
 }
+
+export default LibraryPageComponent;
