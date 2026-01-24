@@ -1,11 +1,12 @@
-import BuyerSell from "../../../../../components/buyer/common/buyer-shell";
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter, useParams } from "next/navigation";
+import BuyerShell from "../../../../../components/buyer/common/buyer-shell";
 import BuyNewButton from "../../../../../components/buyer/discover/buy-new-button";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { apiServerGet } from "@/lib/api/server";
-import { getMe } from "@/lib/auth/getMe";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 
 type LibraryItem = {
   productId: string;
@@ -14,8 +15,6 @@ type LibraryItem = {
   currency: "INR";
   paidAt: string | null;
 };
-
-type LibraryRes = { ok: boolean; items: LibraryItem[]; error?: string };
 
 type ProductDetailRes = {
   ok: boolean;
@@ -32,43 +31,104 @@ type ProductDetailRes = {
   error?: string;
 };
 
+type UserInfo = {
+  ok: boolean;
+  user?: {
+    id: string;
+    email: string;
+    name: string;
+  };
+  error?: string;
+};
+
+type LibraryRes = { ok: boolean; items: LibraryItem[]; error?: string };
+
 function formatDate(input: string | null) {
   if (!input) return "-";
-
   return new Date(input).toLocaleDateString();
 }
 
-export default async function DiscoverDetailsPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
-  const { slug } = await params;
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
-  const me = await getMe();
+export default function DiscoverDetailsPage() {
+  const router = useRouter();
+  const params = useParams();
+  const slug = params?.slug as string;
 
-  const data = await apiServerGet<ProductDetailRes>(`/api/products/${slug}`);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAuth, setIsAuth] = useState(false);
+  const [product, setProduct] = useState<ProductDetailRes["product"]>(null);
+  const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
+  const [userInfo, setUserInfo] = useState<UserInfo["user"]>(null);
 
-  const getLibraryResponse = await apiServerGet<LibraryRes>("/api/library");
-  const libraryItems = getLibraryResponse.items ?? [];
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        // Check auth
+        const authRes = await fetch(`${API_URL}/api/auth/me`, {
+          credentials: "include",
+        });
+        const authData = await authRes.json();
+        if (!authData?.user) {
+          router.push("/login");
+          return;
+        }
+        setIsAuth(true);
+        setUserInfo(authData.user);
 
-  if (!data.ok || !data.product) redirect("/discover");
+        // Load product details
+        const productRes = await fetch(`${API_URL}/api/products/${slug}`, {
+          credentials: "include",
+        });
+        const productData = await productRes.json();
+        if (!productData.ok || !productData.product) {
+          router.push("/discover");
+          return;
+        }
+        setProduct(productData.product);
 
-  const productInfo = data.product;
-  const coverUrl = productInfo.coverUrl;
+        // Load library items
+        const libraryRes = await fetch(`${API_URL}/api/library`, {
+          credentials: "include",
+        });
+        const libraryData = await libraryRes.json();
+        setLibraryItems(libraryData?.items ?? []);
+      } catch (err) {
+        console.error("Error loading product details:", err);
+        router.push("/discover");
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-  const isOwner = me.ok && me.user && me.user.id === productInfo.creatorId;
+    if (slug) {
+      loadData();
+    }
+  }, [slug, router]);
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center h-screen">Loading...</div>;
+  }
+
+  if (!isAuth || !product || !userInfo) {
+    return null;
+  }
+
+  const isOwner = userInfo.id === product.creatorId;
+  const hasPurchased = libraryItems.filter(
+    (item) => item.productId === product._id
+  ).length > 0;
 
   return (
-    <BuyerSell isUserLoggedIn={me.ok}>
+    <BuyerShell isUserLoggedIn={true}>
       <main className="px-4 lg:px-[8vw] py-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-6">
             <Card className="bg-white border border-black/50 rounded-3xl overflow-hidden">
               <div className="relative aspect-square bg-[#efefea]">
-                {coverUrl ? (
+                {product.coverUrl ? (
                   <img
-                    src={coverUrl}
+                    src={product.coverUrl}
                     alt="Cover Image"
                     className="h-full w-full object-cover"
                   />
@@ -85,12 +145,12 @@ export default async function DiscoverDetailsPage({
             <div className="lg:sticky lg:top-24 space-y-5">
               <div className="space-y-3">
                 <h1 className="text-4xl md:text-5xl leading-none tracking-tight">
-                  {productInfo?.title}
+                  {product.title}
                 </h1>
 
-                {productInfo?.description ? (
+                {product.description ? (
                   <p className="text-lg text-black/70 leading-relaxed">
-                    {productInfo.description}
+                    {product.description}
                   </p>
                 ) : null}
               </div>
@@ -100,32 +160,26 @@ export default async function DiscoverDetailsPage({
                   <div>
                     <div className="text-sm text-black/60">Price</div>
                     <div className="text-3xl font-medium leading-none">
-                      {productInfo.currency} {productInfo.price}
+                      {product.currency} {product.price}
                     </div>
                   </div>
                 </div>
                 <div className="mt-5">
-                  {!me.ok ? (
-                    <Button asChild className="w-full h-12 rounded-xl">
-                      <Link href="/login">Login To Buy</Link>
-                    </Button>
-                  ) : isOwner ? (
+                  {isOwner ? (
                     <div className="rounded-xl border border-black/50 bg-[#efefea] px-4 py-3 text-sm text-black">
                       You cant buy your own product
                     </div>
-                  ) : libraryItems.filter(
-                      (item) => item.productId === productInfo._id
-                    ).length ? (
+                  ) : hasPurchased ? (
                     <Button className="w-full rounded-none border px-4 py-4 bg-black cursor-pointer text-sm disabled:opacity-65 font-medium">
                       You purchased this product{" "}
                       {formatDate(
                         libraryItems.find(
-                          (item) => item.productId === productInfo._id
+                          (item) => item.productId === product._id
                         )?.paidAt || null
                       )}
                     </Button>
                   ) : (
-                    <BuyNewButton productId={productInfo._id} />
+                    <BuyNewButton productId={product._id} />
                   )}
                 </div>
               </Card>
@@ -133,6 +187,6 @@ export default async function DiscoverDetailsPage({
           </div>
         </div>
       </main>
-    </BuyerSell>
+    </BuyerShell>
   );
 }

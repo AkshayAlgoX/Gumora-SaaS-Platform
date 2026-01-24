@@ -125,13 +125,20 @@ export default function CreatorSidebar() {
 
   async function onLogout() {
     try {
-      const res = await apiClient.post<LogoutResponse>("/api/auth/logout");
-      if (res?.data?.ok) {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/logout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (data?.ok) {
         router.push("/login");
         router.refresh();
       }
     } catch (e) {
-      console.log(e);
+      console.error("Logout failed:", e);
+      // Force redirect anyway
+      router.push("/login");
     }
   }
 

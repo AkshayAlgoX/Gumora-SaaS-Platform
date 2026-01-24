@@ -1,8 +1,9 @@
-import BuyerSell from "../../../../components/buyer/common/buyer-shell";
+"use client";
+
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import BuyerShell from "../../../../components/buyer/common/buyer-shell";
 import LibraryClient from "../../../../components/buyer/library/library-client";
-import { apiServerGet } from "@/lib/api/server";
-import { getMe } from "@/lib/auth/getMe";
-import { redirect } from "next/navigation";
 
 export type LibraryItem = {
   productId: string;
@@ -14,16 +15,52 @@ export type LibraryItem = {
 
 export type LibraryRes = { ok: boolean; items: LibraryItem[]; error?: string };
 
-async function LibraryPage() {
-  const me = await getMe();
+export default function LibraryPage() {
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(true);
+  const [items, setItems] = useState<LibraryItem[]>([]);
 
-  if (!me.ok) redirect("/login");
+  useEffect(() => {
+    const checkAuthAndLoadLibrary = async () => {
+      try {
+        // Check auth
+        const meRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/me`, {
+          credentials: "include",
+        });
+        const meData = await meRes.json();
+        
+        if (!meData?.user) {
+          router.push("/login");
+          return;
+        }
 
-  const data = await apiServerGet<LibraryRes>("/api/library");
-  const items = data.items ?? [];
+        // Load library
+        const libRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/library`, {
+          credentials: "include",
+        });
+        const libData = await libRes.json();
+        setItems(libData.items ?? []);
+      } catch (err) {
+        console.error("Error loading library:", err);
+        router.push("/login");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAuthAndLoadLibrary();
+  }, [router]);
+
+  if (isLoading) {
+    return (
+      <BuyerShell>
+        <div className="flex items-center justify-center h-screen">Loading...</div>
+      </BuyerShell>
+    );
+  }
 
   return (
-    <BuyerSell>
+    <BuyerShell>
       <main className="px-4 py-10 lg:px-[8vw]">
         <div className="mb-8 space-y-2">
           <h1 className="text-4xl leading-none tracking-tight md:text-5xl">
@@ -32,7 +69,7 @@ async function LibraryPage() {
         </div>
         <LibraryClient items={items} />
       </main>
-    </BuyerSell>
+    </BuyerShell>
   );
 }
 

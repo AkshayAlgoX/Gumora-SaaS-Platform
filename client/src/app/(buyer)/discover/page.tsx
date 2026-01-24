@@ -1,5 +1,8 @@
-import BuyerSell from "../../../../components/buyer/common/buyer-shell";
-import { apiServerGet } from "@/lib/api/server";
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import BuyerShell from "../../../../components/buyer/common/buyer-shell";
 import Link from "next/link";
 
 type Product = {
@@ -10,11 +13,52 @@ type Product = {
   coverUrl: string | null;
 };
 
-type ProductRes = { ok: boolean; products: Product[] };
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
-async function BuyerDiscoverPage() {
-  const data = await apiServerGet<ProductRes>("/api/products");
-  const products = data?.products ?? [];
+export default function BuyerDiscoverPage() {
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAuth, setIsAuth] = useState(false);
+  const [products, setProducts] = useState<Product[]>([]);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        // Check auth first
+        const authRes = await fetch(`${API_URL}/api/auth/me`, {
+          credentials: "include",
+        });
+        const authData = await authRes.json();
+        if (!authData?.user) {
+          router.push("/login");
+          return;
+        }
+        setIsAuth(true);
+
+        // Load products
+        const productsRes = await fetch(`${API_URL}/api/products`, {
+          credentials: "include",
+        });
+        const productsData = await productsRes.json();
+        setProducts(productsData?.products ?? []);
+      } catch (err) {
+        console.error("Error loading discover page:", err);
+        router.push("/login");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+  }, [router]);
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center h-screen">Loading...</div>;
+  }
+
+  if (!isAuth) {
+    return null;
+  }
 
   const wrap = "px-4 py-10 lg:px-[8vw]";
   const card =
@@ -29,7 +73,7 @@ async function BuyerDiscoverPage() {
     "inline-flex h-9 items-center justify-center rounded-none bg-[#FF90E8] px-4 text-sm font-medium text-black hover:bg-[#FF90E8]/90 border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0";
 
   return (
-    <BuyerSell>
+    <BuyerShell>
       <main className={wrap}>
         <div className="mb-8 space-y-2">
           <h1 className="text-4xl leading-none tracking-tight md:text-5xl">
@@ -85,8 +129,6 @@ async function BuyerDiscoverPage() {
           </div>
         )}
       </main>
-    </BuyerSell>
+    </BuyerShell>
   );
 }
-
-export default BuyerDiscoverPage;

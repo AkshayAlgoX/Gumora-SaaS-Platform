@@ -29,13 +29,19 @@ function BuyerNavbar({ isUserLoggedIn }: { isUserLoggedIn: boolean }) {
   async function handleLogout() {
     try {
       setLoading(true);
-      const res = await apiClient.post<LogoutResponse>("/api/auth/logout");
-      if (res?.data?.ok) {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/logout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (data?.ok) {
         router.push("/login");
         router.refresh();
       }
     } catch (e) {
-      console.log(e);
+      console.error("Logout failed:", e);
+      router.push("/login");
     } finally {
       setLoading(false);
     }

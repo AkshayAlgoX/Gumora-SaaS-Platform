@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import BuyerNavbar from "./navbar";
 
-export default function BuyerSell({ 
+export default function BuyerShell({ 
   children, 
   isUserLoggedIn = false 
 }: { 
