@@ -1,22 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export async function GET(req: NextRequest, { params }: any) {
+interface Params {
+  path: string[];
+}
+
+export async function GET(req: NextRequest, { params }: { params: Params }) {
   return handle(req, params);
 }
 
-export async function POST(req: NextRequest, { params }: any) {
+export async function POST(req: NextRequest, { params }: { params: Params }) {
   return handle(req, params);
 }
 
-export async function PUT(req: NextRequest, { params }: any) {
+export async function PUT(req: NextRequest, { params }: { params: Params }) {
   return handle(req, params);
 }
 
-export async function DELETE(req: NextRequest, { params }: any) {
+export async function DELETE(req: NextRequest, { params }: { params: Params }) {
   return handle(req, params);
 }
 
-async function handle(req: NextRequest, params: { path: string[] }) {
+async function handle(req: NextRequest, params: Params) {
   try {
     const pathStr = params.path.join("/");
     const backendUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/${pathStr}`;
