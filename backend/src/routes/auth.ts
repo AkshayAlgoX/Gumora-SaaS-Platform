@@ -1,156 +1,157 @@
-import { Router } from 'express';
-import { User } from '../models/Users';
-import { hashPassword,signJwt,verifyPassword } from '../lib/auth';
+import { Router } from "express";
+import { User } from "../models/Users";
+import { hashPassword, signJwt, verifyPassword } from "../lib/auth";
 import { requireAuth, AuthedRequest } from "../middleware/requireAuth";
 
 export const authRouter = Router();
 
+/* ================= REGISTER ================= */
 
+authRouter.post("/register", async (req, res) => {
+  try {
+    const { name, email, password } = req.body ?? {};
 
-authRouter.post("/register", async(req, res)=> {
-    try{
-      const {name, email, password} = req.body ?? {}
-
-    if(!name || !email || !password){
-        return res.status(400).json({
-            ok: false,
-            error : "name, email , password needed"
-        })
+    if (!name || !email || !password) {
+      return res.status(400).json({
+        ok: false,
+        error: "name, email, password needed",
+      });
     }
-    
+
     const exists = await User.findOne({
-        email : String(email).toLowerCase()
-    }).lean()
+      email: String(email).toLowerCase(),
+    }).lean();
 
-    if(exists){
-        return res.status(400).json({
-            ok: false,
-            error : "Email already in use"
-        });
+    if (exists) {
+      return res.status(400).json({
+        ok: false,
+        error: "Email already in use",
+      });
     }
 
-    const passwordHash = await hashPassword(String(password))
+    const passwordHash = await hashPassword(String(password));
 
     const newlyCreatedUser = await User.create({
-        name : String(name),
-        email : String(email).toLowerCase(),
-        passwordHash,
-        isCreator: false
-    })
+      name: String(name),
+      email: String(email).toLowerCase(),
+      passwordHash,
+      isCreator: false,
+    });
 
     return res.json({
-    ok: true,
-    message : 'Account created successfully!',
-    user:{
+      ok: true,
+      message: "Account created successfully!",
+      user: {
         id: String(newlyCreatedUser._id),
-        name : newlyCreatedUser.name,
-        email : newlyCreatedUser.email,
-        isCreator: newlyCreatedUser.isCreator
-        },
+        name: newlyCreatedUser.name,
+        email: newlyCreatedUser.email,
+        isCreator: newlyCreatedUser.isCreator,
+      },
     });
-    }catch(e){
-       console.log(e); 
-       res.status(500).json({
-            ok: false,
-            error : "Internal server error",
-        });
-    }
+  } catch (e) {
+    console.log(e);
+    return res.status(500).json({
+      ok: false,
+      error: "Internal server error",
+    });
+  }
 });
 
-authRouter.post("/login", async(req, res)=> {
-    try{
-        const { email, password} = req.body ?? {}
+/* ================= LOGIN ================= */
 
-    if(  !email || !password){
-        return res.status(400).json({
-            ok: false,
-            error : "email , password needed"
-        });
+authRouter.post("/login", async (req, res) => {
+  try {
+    const { email, password } = req.body ?? {};
+
+    if (!email || !password) {
+      return res.status(400).json({
+        ok: false,
+        error: "email, password needed",
+      });
     }
-    
+
     const user = await User.findOne({
-        email : String(email).toLowerCase()
-    })
+      email: String(email).toLowerCase(),
+    });
 
-    if(!user){
-        return res.status(400).json({
-            ok: false,
-            error : "Invalid credentials"
-        });
-    }    
-
-    const okPassword = await verifyPassword(String(password), user.passwordHash)
-
-    if(!okPassword){
-         return res.status(400).json({
-            ok: false,
-            error : "Invalid credentials",
-        });
+    if (!user) {
+      return res.status(400).json({
+        ok: false,
+        error: "Invalid credentials",
+      });
     }
 
-    const token = signJwt({userId : String(user._id)})
-    
-    res.cookie(process.env.COOKIE_NAME!, token, {
-        res.cookie(process.env.COOKIE_NAME!, token, {
-  httpOnly: true,
-  secure: true,
-  sameSite: "none",
-  maxAge: 7 * 24 * 60 * 60 * 1000, 
-});
-    })
+    const okPassword = await verifyPassword(
+      String(password),
+      user.passwordHash
+    );
 
-    
-    
-return res.json({
-    ok : true,
-    user : {
+    if (!okPassword) {
+      return res.status(400).json({
+        ok: false,
+        error: "Invalid credentials",
+      });
+    }
+
+    // ✅ CREATE JWT
+    const token = signJwt({ userId: String(user._id) });
+
+    // ✅ SET COOKIE (PRODUCTION SAFE)
+    res.cookie(process.env.COOKIE_NAME!, token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    return res.json({
+      ok: true,
+      user: {
         id: String(user._id),
         name: user.name,
         email: user.email,
         isCreator: user.isCreator,
-    }
-})
-
- 
-    }catch(e){
-        console.log(e);
-        res.status(400).json({
-            ok: false,
-            error : "Internal server error"
-        });
-    }
+      },
+    });
+  } catch (e) {
+    console.log(e);
+    return res.status(500).json({
+      ok: false,
+      error: "Internal server error",
+    });
+  }
 });
 
-authRouter.post("/logout", async(req, res)=> {
-    try{
-        res.clearCookie(process.env.COOKIE_NAME!, {
-  httpOnly: true,
-  secure: true,
-  sameSite: "none",
+/* ================= LOGOUT ================= */
+
+authRouter.post("/logout", async (req, res) => {
+  try {
+    res.clearCookie(process.env.COOKIE_NAME!, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+    });
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.log(err);
+    return res.status(500).json({
+      ok: false,
+      error: "Internal server error",
+    });
+  }
 });
 
-
-        return res.json({ok: true})
-    }catch(err){
-        console.log(err);
-        res.status(500).json({
-            ok: false,
-            error: "Internal server error",
-        });
-    }
-});
-
-
-//protected routes
+/* ================= ME (PROTECTED) ================= */
 
 authRouter.get("/me", requireAuth, async (req: AuthedRequest, res) => {
-    try {
-        return res.json({ ok: true, user: req.user });
-    } catch (err) {
-        console.log(err);
-        res.status(500).json({
-            ok: false,
-            error: "Internal server error",
-        });
-    }
+  try {
+    return res.json({ ok: true, user: req.user });
+  } catch (err) {
+    console.log(err);
+    return res.status(500).json({
+      ok: false,
+      error: "Internal server error",
+    });
+  }
 });
