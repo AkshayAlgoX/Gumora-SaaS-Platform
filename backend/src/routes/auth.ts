@@ -31,7 +31,7 @@ authRouter.post("/register", async (req, res) => {
 
     const passwordHash = await hashPassword(String(password));
 
-    const newlyCreatedUser = await User.create({
+    const user = await User.create({
       name: String(name),
       email: String(email).toLowerCase(),
       passwordHash,
@@ -40,16 +40,15 @@ authRouter.post("/register", async (req, res) => {
 
     return res.json({
       ok: true,
-      message: "Account created successfully!",
       user: {
-        id: String(newlyCreatedUser._id),
-        name: newlyCreatedUser.name,
-        email: newlyCreatedUser.email,
-        isCreator: newlyCreatedUser.isCreator,
+        id: String(user._id),
+        name: user.name,
+        email: user.email,
+        isCreator: user.isCreator,
       },
     });
   } catch (e) {
-    console.log(e);
+    console.error(e);
     return res.status(500).json({
       ok: false,
       error: "Internal server error",
@@ -93,15 +92,13 @@ authRouter.post("/login", async (req, res) => {
       });
     }
 
-    // ✅ CREATE JWT
     const token = signJwt({ userId: String(user._id) });
 
-    // ✅ SET COOKIE (PRODUCTION SAFE)
     res.cookie(process.env.COOKIE_NAME!, token, {
       httpOnly: true,
       secure: true,
       sameSite: "none",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
     return res.json({
@@ -114,7 +111,7 @@ authRouter.post("/login", async (req, res) => {
       },
     });
   } catch (e) {
-    console.log(e);
+    console.error(e);
     return res.status(500).json({
       ok: false,
       error: "Internal server error",
@@ -124,7 +121,7 @@ authRouter.post("/login", async (req, res) => {
 
 /* ================= LOGOUT ================= */
 
-authRouter.post("/logout", async (req, res) => {
+authRouter.post("/logout", async (_req, res) => {
   try {
     res.clearCookie(process.env.COOKIE_NAME!, {
       httpOnly: true,
@@ -133,8 +130,8 @@ authRouter.post("/logout", async (req, res) => {
     });
 
     return res.json({ ok: true });
-  } catch (err) {
-    console.log(err);
+  } catch (e) {
+    console.error(e);
     return res.status(500).json({
       ok: false,
       error: "Internal server error",
@@ -147,8 +144,8 @@ authRouter.post("/logout", async (req, res) => {
 authRouter.get("/me", requireAuth, async (req: AuthedRequest, res) => {
   try {
     return res.json({ ok: true, user: req.user });
-  } catch (err) {
-    console.log(err);
+  } catch (e) {
+    console.error(e);
     return res.status(500).json({
       ok: false,
       error: "Internal server error",
