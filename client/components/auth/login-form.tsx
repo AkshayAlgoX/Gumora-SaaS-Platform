@@ -1,13 +1,11 @@
 "use client";
+
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Card } from "../ui/card";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
-import { apiClient } from "@/lib/api/client";
-
-
 
 function LoginForm() {
   const router = useRouter();
@@ -15,86 +13,91 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-async function handleOnSubmit(event: React.FormEvent) {
-  event.preventDefault();
-  setLoading(true);
+  async function handleOnSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setLoading(true);
 
-  try {
-    
-    const loginRes = await apiClient.post("/api/auth/login", {
-      email,
-      password,
-    });
+    try {
+      // 🔴 IMPORTANT: call NEXT API, NOT backend directly
+      const loginRes = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      });
 
-    if (!loginRes?.data?.ok) {
-      toast.error(loginRes?.data?.error || "Login failed");
-      return;
-    }
+      const loginData = await loginRes.json();
 
-    
-    const meRes = await apiClient.get("/api/auth/me");
+      if (!loginData?.ok) {
+        toast.error(loginData?.error || "Login failed");
+        return;
+      }
 
-    if (meRes?.data?.user) {
-      toast.success("Login successful");
-      router.push("/dashboard/products"); 
-      router.refresh();
-    } else {
+      // ✅ verify session via backend cookie
+      const meRes = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/auth/me`,
+        {
+          credentials: "include",
+        }
+      );
+
+      const meData = await meRes.json();
+
+      if (meData?.user) {
+        toast.success("Login successful");
+        router.push("/dashboard/products");
+        router.refresh();
+      } else {
+        toast.error("Session verification failed");
+      }
+    } catch (err) {
+      console.error(err);
       toast.error("Login failed. Please try again.");
+    } finally {
+      setLoading(false);
     }
-  } catch (e: any) {
-    console.log(e);
-    toast.error(e?.response?.data?.error || "Login failed. Please try again.");
-  } finally {
-    setLoading(false);
   }
-}
-
-
-
 
   return (
     <Card className="border-0 bg-transparent shadow-none">
-  <form onSubmit={handleOnSubmit} className="space-y-4">
-    <fieldset className="space-y-2">
-      <legend className="text-sm font-medium text-zinc-900 mb-2">
-        Email
-      </legend>
+      <form onSubmit={handleOnSubmit} className="space-y-4">
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium text-zinc-900 mb-2">
+            Email
+          </legend>
+          <Input
+            required
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="h-11 border-zinc-300 text-[15px]"
+          />
+        </fieldset>
 
-      <Input
-        required
-        type="email"
-        autoComplete="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        className="h-11 border-zinc-300 text-[15px] placeholder:text-zinc-400"
-      />
-    </fieldset>
-    <fieldset className="space-y-2">
-      <legend className="text-sm font-medium text-zinc-900 mb-2">
-        Password
-      </legend>
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium text-zinc-900 mb-2">
+            Password
+          </legend>
+          <Input
+            required
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="h-11 border-zinc-300 text-[15px]"
+          />
+        </fieldset>
 
-      <Input
-        required
-        type="password"
-        autoComplete="password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        className="h-11 border-zinc-300 text-[15px] placeholder:text-zinc-400"
-      />
-    </fieldset>
-
-    
-     <Button
-  disabled={loading}
-  className="h-11 w-full bg-zinc-900 text-white shadow-sm"
->
-  {loading ? "Logging in..." : "Log In"}
-</Button>
-
-  </form>
-</Card>
-
+        <Button
+          disabled={loading}
+          className="h-11 w-full bg-zinc-900 text-white"
+        >
+          {loading ? "Logging in..." : "Log In"}
+        </Button>
+      </form>
+    </Card>
   );
 }
 
