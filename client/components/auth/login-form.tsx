@@ -48,9 +48,16 @@ function LoginForm() {
 
       if (meData?.user) {
         toast.success("Login successful");
+        console.log("Auth verified, redirecting to dashboard...", meData);
+        // Wait a moment for everything to settle
+        await new Promise(resolve => setTimeout(resolve, 1000));
         router.push("/dashboard/products");
-        router.refresh();
+        // Force hard refresh of layout
+        setTimeout(() => {
+          window.location.href = "/dashboard/products";
+        }, 500);
       } else {
+        console.error("Session verification failed", meData);
         toast.error("Session verification failed");
       }
     } catch (err) {
