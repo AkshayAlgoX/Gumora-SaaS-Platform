@@ -69,4 +69,4 @@ function LibraryPageComponent() {
   );
 }
 
-export default LibraryPageComponent;
+export default LibraryPageComponent; // v2 - force rebuild
