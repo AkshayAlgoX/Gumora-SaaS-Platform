@@ -36,6 +36,12 @@ export function createApp(){
     app.use("/api/checkout", checkoutRouter);
     app.use("/api/library",libraryRouter);
 
+
+    app.get("/healthz", (_req, res) => {
+  res.status(200).send("OK");
+});
+
+
     return app;
 
 }
