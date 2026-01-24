@@ -44,6 +44,35 @@ function formatDate(input: string | null) {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL;
 
+async function downloadAsset(assetId: string) {
+  try {
+    const res = await fetch(`${API_BASE}/api/library/assets/${assetId}/download`, {
+      credentials: "include",
+      redirect: "follow",
+    });
+    
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data?.error || "Download failed. Please try again.");
+      return;
+    }
+    
+    // Get the final URL after redirect and open it
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `asset-${assetId}.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error("Download error:", e);
+    alert("Download failed. Please try again.");
+  }
+}
+
 function LibraryClient({ items }: { items: LibraryItem[] }) {
   const [open, setOpen] = useState(false);
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -171,12 +200,11 @@ function LibraryClient({ items }: { items: LibraryItem[] }) {
                     />
                   </div>
                   <div className="p-4">
-                    <Button asChild className="mt-3 w-full">
-                      <a
-                        href={`${API_BASE}/api/library/assets/${asset._id}/download`}
-                      >
-                        Download
-                      </a>
+                    <Button 
+                      className="mt-3 w-full cursor-pointer"
+                      onClick={() => downloadAsset(asset._id)}
+                    >
+                      Download
                     </Button>
                   </div>
                 </div>

@@ -19,8 +19,8 @@ export default function RegisterPage() {
         });
         const data = await res.json();
         if (data?.user) {
-          // Already logged in - go back to previous page
-          router.back();
+          // Already logged in - redirect to dashboard
+          router.push("/dashboard/products");
           return;
         }
       } catch (err) {
