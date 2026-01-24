@@ -15,24 +15,32 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function handleOnSubmit(event: React.FormEvent) {
+async function handleOnSubmit(event: React.FormEvent) {
   event.preventDefault();
   setLoading(true);
 
   try {
-    const res = await apiClient.post("/api/auth/login",{
-        email,password
+    
+    const loginRes = await apiClient.post("/api/auth/login", {
+      email,
+      password,
     });
-    if (res?.data?.ok) {
-  toast.success(
-    res?.data?.message || "Log in successfull..."
-  );
-  router.push("/");
-  router.refresh();
-} else {
-  toast.error(res?.data?.error || "Login failed");
-}
 
+    if (!loginRes?.data?.ok) {
+      toast.error(loginRes?.data?.error || "Login failed");
+      return;
+    }
+
+    
+    const meRes = await apiClient.get("/api/auth/me");
+
+    if (meRes?.data?.user) {
+      toast.success("Login successful");
+      router.push("/dashboard/products"); 
+      router.refresh();
+    } else {
+      toast.error("Login failed. Please try again.");
+    }
   } catch (e: any) {
     console.log(e);
     toast.error(e?.response?.data?.error || "Login failed. Please try again.");
@@ -40,6 +48,7 @@ function LoginForm() {
     setLoading(false);
   }
 }
+
 
 
 
