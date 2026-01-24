@@ -10,6 +10,7 @@ export async function apiServerGet<T>(path: string): Promise<T> {
     const res = await fetch(`${API_BASE_URL}${path}`, {
       method: "GET",
       headers: { cookie: cookieStore.toString() },
+      credentials: "include",
       cache: "no-store",
     });
     
@@ -45,6 +46,7 @@ export async function apiServerPost<T>(path: string,body:unknown): Promise<T> {
           cookie: cookieStore.toString()
       },
       body: JSON.stringify(body),
+      credentials: "include",
       cache: "no-store",
     });
     
