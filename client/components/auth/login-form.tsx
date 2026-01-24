@@ -18,7 +18,7 @@ function LoginForm() {
     setLoading(true);
 
     try {
-      // 🔴 IMPORTANT: call NEXT API, NOT backend directly
+
       const loginRes = await fetch("/api/auth/login", {
         method: "POST",
         headers: {
@@ -34,7 +34,7 @@ function LoginForm() {
         return;
       }
 
-      // ✅ verify session via backend cookie
+
       const meRes = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/auth/me`,
         {

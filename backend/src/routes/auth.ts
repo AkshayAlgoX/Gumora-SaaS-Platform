@@ -92,7 +92,7 @@ authRouter.post("/login", async (req, res) => {
 
     const token = signJwt({ userId: String(user._id) });
 
-    // ✅ PRODUCTION-SAFE COOKIE
+   
     res.cookie(process.env.COOKIE_NAME!, token, {
       httpOnly: true,
       secure: true,

@@ -19,7 +19,7 @@ export function createApp(){
     app.use(
         cors({
             origin : [ process.env.FRONTEND_ORIGIN,
-                      "https://gumora-saas-platform.vercel.app",
+                      "https://gamora-saas-platform.vercel.app",
             ],
             credentials : true
         })
