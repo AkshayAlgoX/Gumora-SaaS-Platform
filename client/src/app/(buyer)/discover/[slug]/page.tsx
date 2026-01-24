@@ -57,9 +57,9 @@ export default function DiscoverDetailsPage() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isAuth, setIsAuth] = useState(false);
-  const [product, setProduct] = useState<ProductDetailRes["product"]>(null);
+  const [product, setProduct] = useState<ProductDetailRes["product"] | null>(null);
   const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
-  const [userInfo, setUserInfo] = useState<UserInfo["user"]>(null);
+  const [userInfo, setUserInfo] = useState<UserInfo["user"] | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
