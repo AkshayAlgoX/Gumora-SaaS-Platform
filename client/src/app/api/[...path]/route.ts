@@ -4,20 +4,24 @@ interface Params {
   path: string[];
 }
 
-export async function GET(req: NextRequest, { params }: { params: Params }) {
-  return handle(req, params);
+export async function GET(req: NextRequest, { params }: { params: Promise<Params> }) {
+  const resolvedParams = await params;
+  return handle(req, resolvedParams);
 }
 
-export async function POST(req: NextRequest, { params }: { params: Params }) {
-  return handle(req, params);
+export async function POST(req: NextRequest, { params }: { params: Promise<Params> }) {
+  const resolvedParams = await params;
+  return handle(req, resolvedParams);
 }
 
-export async function PUT(req: NextRequest, { params }: { params: Params }) {
-  return handle(req, params);
+export async function PUT(req: NextRequest, { params }: { params: Promise<Params> }) {
+  const resolvedParams = await params;
+  return handle(req, resolvedParams);
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: Params }) {
-  return handle(req, params);
+export async function DELETE(req: NextRequest, { params }: { params: Promise<Params> }) {
+  const resolvedParams = await params;
+  return handle(req, resolvedParams);
 }
 
 async function handle(req: NextRequest, params: Params) {
