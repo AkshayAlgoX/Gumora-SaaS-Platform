@@ -2,14 +2,14 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import BuyerShell from "../../../../components/buyer/common/buyer-shell";
-import LibraryClient from "../../../../components/buyer/library/library-client";
+import LibraryClient, { LibraryItem } from "../../../../components/buyer/library/library-client";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
 export default function LibPage() {
   const r = useRouter();
   const [l, setL] = useState(true);
-  const [i, setI] = useState([]);
+  const [i, setI] = useState<LibraryItem[]>([]);
 
   useEffect(() => {
     (async () => {

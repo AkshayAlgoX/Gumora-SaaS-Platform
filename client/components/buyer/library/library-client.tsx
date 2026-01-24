@@ -1,6 +1,5 @@
 "use client";
 
-import { LibraryItem } from "@/app/(buyer)/library/page";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -13,6 +12,14 @@ import { apiClient } from "@/lib/api/client";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+
+export type LibraryItem = {
+  productId: string;
+  title: string;
+  price: number;
+  currency: "INR";
+  paidAt: string | null;
+};
 
 type Asset = {
   _id: string;
