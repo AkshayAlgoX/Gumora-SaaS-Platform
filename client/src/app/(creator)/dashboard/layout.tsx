@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import CreatorSidebar from "components/creator/common/sidebar";
 import { toast } from "sonner";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
 export default function DashboardLayout({
   children,
 }: {
@@ -17,19 +19,17 @@ export default function DashboardLayout({
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const res = await fetch("/api/auth/me", {
+        const res = await fetch(`${API_URL}/api/auth/me`, {
           credentials: "include",
         });
         const data = await res.json();
         if (data?.user) {
           setIsAuth(true);
         } else {
-          toast.error("Please login first");
           router.push("/login");
         }
       } catch (err) {
         console.error("Auth check failed:", err);
-        toast.error("Auth error");
         router.push("/login");
       } finally {
         setIsLoading(false);

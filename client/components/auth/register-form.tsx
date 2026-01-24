@@ -18,7 +18,7 @@ function RegisterForm() {
     setLoading(true);
 
     try {
-      const res = await fetch(`/api/auth/register`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -33,11 +33,8 @@ function RegisterForm() {
 
       const data = await res.json();
       if (data?.ok) {
-        toast.success(
-          data?.message || "Account created. Please log in..."
-        );
+        toast.success("Account created. Please log in...");
         router.push("/login");
-        router.refresh();
       } else {
         toast.error(data?.error || "Registration failed");
       }

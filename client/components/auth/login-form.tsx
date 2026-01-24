@@ -18,7 +18,7 @@ function LoginForm() {
     setLoading(true);
 
     try {
-      const loginRes = await fetch(`/api/auth/login`, {
+      const loginRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -37,29 +37,10 @@ function LoginForm() {
         return;
       }
 
-      const meRes = await fetch(
-        `/api/auth/me`,
-        {
-          credentials: "include",
-        }
-      );
-
-      const meData = await meRes.json();
-
-      if (meData?.user) {
-        toast.success("Login successful");
-        console.log("Auth verified, redirecting to dashboard...", meData);
-        // Wait a moment for everything to settle
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        router.push("/dashboard/products");
-        // Force hard refresh of layout
-        setTimeout(() => {
-          window.location.href = "/dashboard/products";
-        }, 500);
-      } else {
-        console.error("Session verification failed", meData);
-        toast.error("Session verification failed");
-      }
+      toast.success("Login successful");
+      // Wait for cookies to settle
+      await new Promise(resolve => setTimeout(resolve, 500));
+      router.push("/dashboard/products");
     } catch (err) {
       console.error(err);
       toast.error("Login failed. Please try again.");
