@@ -48,25 +48,17 @@ async function downloadAsset(assetId: string) {
   try {
     const res = await fetch(`${API_BASE}/api/library/assets/${assetId}/download`, {
       credentials: "include",
-      redirect: "follow",
     });
     
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
+    const data = await res.json();
+    
+    if (!data.ok || !data.downloadUrl) {
       alert(data?.error || "Download failed. Please try again.");
       return;
     }
     
-    // Get the final URL after redirect and open it
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `asset-${assetId}.jpg`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
+    // Open the Cloudinary download URL in a new tab
+    window.open(data.downloadUrl, "_blank");
   } catch (e) {
     console.error("Download error:", e);
     alert("Download failed. Please try again.");

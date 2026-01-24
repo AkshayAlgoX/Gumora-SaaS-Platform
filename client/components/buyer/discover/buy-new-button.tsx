@@ -83,10 +83,13 @@ function BuyNewButton({ productId }: { productId: string }) {
 
       console.log('Cashfree loaded, starting checkout');
       
+      // Use production or sandbox based on environment
+      const cashfreeMode = process.env.NEXT_PUBLIC_CASHFREE_ENV === "production" ? "production" : "sandbox";
+      
       let cashfree: any;
       try {
         cashfree = (window as any).Cashfree({
-          mode: "sandbox", // Use sandbox for development
+          mode: cashfreeMode,
         });
       } catch (e) {
         console.error("Failed to initialize Cashfree SDK:", e);

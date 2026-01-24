@@ -140,9 +140,11 @@ libraryRouter.get(
         });
       }
 
-      return res.redirect(
-        toAttachmentUrl(String((asset as any).cloudinary.secureUrl))
-      );
+      // Return download URL as JSON instead of redirect (for cross-origin support)
+      return res.json({
+        ok: true,
+        downloadUrl: toAttachmentUrl(String((asset as any).cloudinary.secureUrl)),
+      });
     } catch (e) {
       console.log(e);
       res.status(500).json({
