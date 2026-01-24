@@ -18,8 +18,10 @@ export async function DELETE(req: NextRequest, { params }: any) {
 
 async function handle(req: NextRequest, params: { path: string[] }) {
   try {
+    const pathStr = params.path.join("/");
+    // Don't double up /api/ - the backend URL already expects /api/path
     const backendUrl =
-      `${process.env.NEXT_PUBLIC_API_URL}/api/${params.path.join("/")}`;
+      `${process.env.NEXT_PUBLIC_API_URL}/api/${pathStr}`;
 
     console.log(`[Proxy] ${req.method} ${backendUrl}`);
 

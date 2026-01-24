@@ -18,7 +18,7 @@ function LoginForm() {
     setLoading(true);
 
     try {
-      const loginRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/login`, {
+      const loginRes = await fetch(`/api/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -38,7 +38,7 @@ function LoginForm() {
       }
 
       const meRes = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/auth/me`,
+        `/api/auth/me`,
         {
           credentials: "include",
         }
