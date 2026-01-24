@@ -6,9 +6,7 @@ import { toast } from "sonner";
 import { Card } from "../ui/card";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
-import { apiClient } from "@/lib/api/client";
 
-// Login form component for user authentication
 function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -20,12 +18,17 @@ function LoginForm() {
     setLoading(true);
 
     try {
-
-      const loginRes = await apiClient.post("/api/auth/login", {
-  email,
-  password,
-});
-
+      const loginRes = await fetch("/api/_proxy/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+        credentials: "include",
+      });
 
       const loginData = await loginRes.json();
 
@@ -33,7 +36,6 @@ function LoginForm() {
         toast.error(loginData?.error || "Login failed");
         return;
       }
-
 
       const meRes = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/auth/me`,
