@@ -1,4 +1,6 @@
-import { apiServerGet } from "@/lib/api/server";
+"use client";
+
+import { useEffect, useState } from "react";
 
 type Sale = {
   productTitle: string;
@@ -8,18 +10,42 @@ type Sale = {
   currency: "INR";
   paidAt: string | null;
 };
-                                
+
 function formatDate(input: string | null) {
   if (!input) return "-";
-
   return new Date(input).toLocaleDateString();
 }
 
-type SalesRes = { ok: boolean; sales: Sale[]; error?: string };
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
-async function CreatorSalesPage() {
-  const data = await apiServerGet<SalesRes>("/api/creator/sales");
-  const sales = data.sales ?? [];
+export default function CreatorSalesPage() {
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadSales = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/creator/sales`, {
+          credentials: "include",
+        });
+        const data = await res.json();
+        setSales(data?.sales ?? []);
+      } catch (err) {
+        console.error("Failed to load sales:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadSales();
+  }, []);
+
+  if (loading) {
+    return (
+      <main className="flex-1 overflow-y-auto">
+        <div className="flex items-center justify-center h-64">Loading...</div>
+      </main>
+    );
+  }
 
   return (
     <main className="flex-1 overflow-y-auto">
@@ -49,26 +75,16 @@ async function CreatorSalesPage() {
                 className="grid grid-cols-12 items-center border-b border-border px-4 py-3"
               >
                 <div className="col-span-5">
-                  <div className="text-sm font-medium">
-                    {saleItem.productTitle}
-                  </div>
+                  <div className="text-sm font-medium">{saleItem.productTitle}</div>
                 </div>
-
                 <div className="col-span-3">
-                  <div className="text-sm font-medium">
-                    {saleItem.buyerName}
-                  </div>
+                  <div className="text-sm font-medium">{saleItem.buyerName}</div>
                 </div>
                 <div className="col-span-2 text-right">
-                  <div className="text-sm font-medium">
-                    INR {saleItem.amount}
-                  </div>
+                  <div className="text-sm font-medium">INR {saleItem.amount}</div>
                 </div>
-
                 <div className="col-span-2 text-right">
-                  <div className="text-sm font-medium">
-                    {formatDate(saleItem.paidAt)}
-                  </div>
+                  <div className="text-sm font-medium">{formatDate(saleItem.paidAt)}</div>
                 </div>
               </div>
             ))}
@@ -78,5 +94,3 @@ async function CreatorSalesPage() {
     </main>
   );
 }
-
-export default CreatorSalesPage;

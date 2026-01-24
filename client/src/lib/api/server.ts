@@ -9,7 +9,8 @@ export async function apiServerGet<T>(path: string): Promise<T> {
 
   try {
     // Use proxy route - same origin, cookies work!
-    const url = `/api${path}`;
+    // path already starts with /api/, so just use it directly
+    const url = path.startsWith("/api/") ? path : `/api${path}`;
     
     const res = await fetch(url, {
       method: "GET",
@@ -44,7 +45,8 @@ export async function apiServerPost<T>(path: string,body:unknown): Promise<T> {
 
   try {
     // Use proxy route - same origin, cookies work!
-    const url = `/api${path}`;
+    // path already starts with /api/, so just use it directly
+    const url = path.startsWith("/api/") ? path : `/api${path}`;
     
     const res = await fetch(url, {
       method: "POST",
