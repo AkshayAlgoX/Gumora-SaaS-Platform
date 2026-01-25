@@ -1,10 +1,20 @@
-# Gamora - Digital Products Marketplace (Gumroad Clone)
+# Gamora - Digital Products Marketplace
 
-A full-stack SaaS platform for creators to sell digital products. Built with modern technologies and production-ready features.
+A production-ready, full-stack SaaS platform enabling creators to monetize digital products. Features AI-powered content import, secure payment processing, and enterprise-grade security. Demonstrates modern web development practices including TypeScript, CI/CD pipelines, caching, and comprehensive testing.
 
 ![CI/CD](https://github.com/AkshayAlgoX/gamora-saas-platform/actions/workflows/ci.yml/badge.svg)
 
-## 🏗️ Architecture
+## 🎯 Key Highlights
+
+- **Full-Stack TypeScript** - End-to-end type safety with strict mode
+- **AI Integration** - Firecrawl-powered intelligent content scraping
+- **Payment Processing** - Complete Cashfree payment gateway integration
+- **Production Security** - Helmet, rate limiting, JWT authentication
+- **Cloud-Native** - Deployed on Vercel + Render with Redis caching
+- **CI/CD Pipeline** - Automated testing and deployment via GitHub Actions
+- **Comprehensive Testing** - Unit tests (Vitest) + E2E tests (Playwright)
+
+## 🏗️ System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -47,41 +57,44 @@ A full-stack SaaS platform for creators to sell digital products. Built with mod
 
 ## ✨ Features
 
-### For Creators
-- 📝 Create and manage digital products
-- 🔥 **Firecrawl AI Import** - Auto-scrape images and descriptions from any URL
-- 🖼️ Cloudinary image hosting with auto-optimization
-- 📊 Sales dashboard with order tracking
-- 💰 Real-time revenue tracking
+### Creator Dashboard
+- 📝 **Product Management** - Full CRUD operations with draft/publish workflow
+- 🔥 **AI-Powered Import** - Firecrawl integration for intelligent content scraping with structured JSON output
+- 🖼️ **Media Pipeline** - Automated image processing and Cloudinary CDN hosting
+- 📊 **Analytics Dashboard** - Real-time sales tracking and revenue insights
+- 💰 **Revenue Management** - Order history with detailed transaction records
 
-### For Buyers
-- 🛒 Discover and purchase digital products
-- 💳 Secure payments via Cashfree
-- 📚 Personal library of purchased products
-- ⬇️ One-click asset downloads
+### Buyer Experience
+- 🛒 **Product Discovery** - Browse and search published digital products
+- 💳 **Secure Checkout** - PCI-compliant payment processing via Cashfree
+- 📚 **Digital Library** - Access purchased products with download management
+- ⬇️ **Asset Delivery** - Secure, authenticated file downloads
 
-### Technical Features
-- 🔐 JWT authentication with HTTP-only cookies
-- 🛡️ Security: Helmet, rate limiting, input validation
-- ✅ TypeScript strict mode
-- 🧪 Unit tests (Vitest) + E2E tests (Playwright)
-- 🚀 CI/CD with GitHub Actions
-- 📈 Sentry error monitoring
-- 🌐 Cross-origin session handling
+### Technical Implementation
+- 🔐 **Authentication** - JWT with HTTP-only cookies, cross-origin session handling
+- 🛡️ **Security Layer** - Helmet headers, rate limiting (10 auth/100 API per 15min), Zod validation
+- ⚡ **Performance** - Redis caching (Upstash), optimized database queries
+- 🧪 **Testing Suite** - Unit tests (Vitest) + E2E tests (Playwright)
+- 🚀 **DevOps** - GitHub Actions CI/CD, automated deployments
+- 📈 **Observability** - Sentry error tracking, structured logging
 
 ## 🛠️ Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| Frontend | Next.js 16, React 19, Tailwind CSS, TypeScript |
-| Backend | Express.js, Node.js, TypeScript |
-| Database | MongoDB Atlas |
-| Image Storage | Cloudinary |
-| Payments | Cashfree (Sandbox/Production) |
-| AI Scraping | Firecrawl |
-| Hosting | Vercel (Frontend), Render (Backend) |
-| Monitoring | Sentry |
-| CI/CD | GitHub Actions |
+| Category | Technologies |
+|----------|--------------|
+| **Frontend** | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS |
+| **Backend** | Express.js, Node.js 20+, TypeScript (Strict Mode) |
+| **Database** | MongoDB Atlas with Mongoose ODM |
+| **Caching** | Upstash Redis (Serverless) |
+| **File Storage** | Cloudinary (CDN + Image Optimization) |
+| **Payments** | Cashfree Payment Gateway |
+| **AI/ML** | Firecrawl (Web Scraping + Structured Extraction) |
+| **Auth** | JWT + HTTP-only Cookies |
+| **Security** | Helmet.js, express-rate-limit, Zod Validation |
+| **Testing** | Vitest (Unit), Playwright (E2E) |
+| **CI/CD** | GitHub Actions |
+| **Monitoring** | Sentry (Error Tracking) |
+| **Hosting** | Vercel (Frontend), Render (Backend) |
 
 ## 🚀 Quick Start
 
@@ -241,5 +254,14 @@ npm run test:e2e:ui      # Interactive UI mode
 This project is licensed under the MIT License.
 
 ---
+
+### 💼 About This Project
+
+This project demonstrates proficiency in:
+- **Full-Stack Development** - Complete frontend + backend implementation
+- **System Design** - Microservices architecture with proper separation of concerns
+- **Third-Party Integrations** - Payment gateways, AI APIs, cloud storage
+- **DevOps Practices** - CI/CD, automated testing, monitoring
+- **Security Best Practices** - Authentication, rate limiting, input validation
 
 Built with ❤️ by [Akshay](https://github.com/AkshayAlgoX)
