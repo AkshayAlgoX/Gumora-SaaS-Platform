@@ -400,21 +400,7 @@ gamora-saas-platform/
 
 ---
 
-## 🗺️ Roadmap / Future Improvements
-
-- [ ] Stripe payment integration (international)
-- [ ] Email notifications (Resend/SendGrid)
-- [ ] Product reviews and ratings
-- [ ] Coupon/discount codes
-- [ ] Subscription-based products
-- [ ] Mobile app (React Native)
-- [ ] Analytics dashboard with charts
-- [ ] Multi-currency support
-- [ ] Affiliate program
-
----
-
-## 💡 Challenges Faced & Learnings
+##  Challenges Faced & Learnings
 
 <details>
 <summary><strong>🔧 Cross-Origin Cookie Handling</strong></summary>
