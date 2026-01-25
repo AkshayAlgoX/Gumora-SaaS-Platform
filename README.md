@@ -32,11 +32,11 @@
 
 | Dashboard | Product Editor | Checkout |
 |-----------|----------------|----------|
-| ![Dashboard](./screens/dashboard.png) | ![Editor](./screens/editor.png) | ![Checkout](./screens/checkout.png) |
+| ![Dashboard](./screens/dashboard.png) | ![Editor](./screens/products_details.png) | ![Checkout](./screens/payments.png) |
 
 | Library | Discover | Login |
 |---------|----------|-------|
-| ![Library](./screens/library.png) | ![Discover](./screens/discover.png) | ![Login](./screens/login.png) |
+| ![Library](./screens/library.png) | ![Discover](./screens/discover.png) | ![Login](./screens/signin.png) |
 
 <!-- 
 📷 SCREENSHOT GUIDE:
