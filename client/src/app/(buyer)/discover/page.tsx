@@ -116,7 +116,7 @@ export default function BuyerDiscoverPage() {
                       </div>
                     </Link>
                     <div className="mt-5 flex items-center justify-between gap-3">
-                      <span className={priceChip}>${p.price}</span>
+                      <span className={priceChip}>₹{p.price}</span>
 
                       <Link href={`/discover/${p.slug}`} className={pinkBtn}>
                         View
