@@ -101,8 +101,17 @@ function BuyNewButton({ productId }: { productId: string }) {
       }
 
       // Store order ID in localStorage before redirecting to Cashfree
-      // This helps with cookie issues after redirect
       localStorage.setItem("pending_order_id", res.order.id);
+      
+      // Store auth token for session restoration after Cashfree redirect
+      try {
+        const tokenRes = await apiClient.get("/api/auth/token");
+        if (tokenRes.data?.token) {
+          localStorage.setItem("session_token", tokenRes.data.token);
+        }
+      } catch (e) {
+        console.log("Could not store session token");
+      }
 
       const options: CashfreeCheckoutOptions = {
         paymentSessionId: res.cashfree.paymentSessionId,

@@ -137,7 +137,54 @@ authRouter.post("/logout", async (_req, res) => {
   }
 });
 
+/* ================= REFRESH SESSION (restore cookie from token) ================= */
+authRouter.post("/refresh-session", async (req, res) => {
+  try {
+    const { token } = req.body ?? {};
+    
+    if (!token) {
+      return res.status(400).json({ ok: false, error: "Token required" });
+    }
+
+    // Verify the token and get user
+    const { verifyJwt } = require("../lib/auth");
+    const payload = verifyJwt(token);
+    const user = await User.findById(payload.userId).lean();
+    
+    if (!user) {
+      return res.status(401).json({ ok: false, error: "Invalid token" });
+    }
+
+    // Re-set the cookie
+    res.cookie(process.env.COOKIE_NAME!, token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    return res.json({
+      ok: true,
+      user: {
+        id: String(user._id),
+        name: user.name,
+        email: user.email,
+        isCreator: user.isCreator,
+      },
+    });
+  } catch (err) {
+    console.error("Refresh session error:", err);
+    return res.status(401).json({ ok: false, error: "Invalid token" });
+  }
+});
+
 /* ================= ME ================= */
 authRouter.get("/me", requireAuth, async (req: AuthedRequest, res) => {
   return res.json({ ok: true, user: req.user });
+});
+
+/* ================= GET TOKEN (for session preservation) ================= */
+authRouter.get("/token", requireAuth, async (req: AuthedRequest, res) => {
+  const token = req.cookies?.[process.env.COOKIE_NAME!];
+  return res.json({ ok: true, token });
 });

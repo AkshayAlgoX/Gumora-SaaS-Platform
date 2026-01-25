@@ -55,13 +55,40 @@ function LibraryContent() {
         }
         
         // Now check auth
-        const authRes = await fetch(`${API}/api/auth/me`, { credentials: "include" });
-        const authData = await authRes.json();
+        let authRes = await fetch(`${API}/api/auth/me`, { credentials: "include" });
+        let authData = await authRes.json();
         
         console.log("Auth check result:", authData);
         
+        // If not authenticated, try to restore session from stored token
         if (!authData?.user) {
-          // Not authenticated - redirect to login
+          const storedToken = localStorage.getItem("session_token");
+          if (storedToken) {
+            console.log("Trying to restore session from stored token...");
+            try {
+              const refreshRes = await fetch(`${API}/api/auth/refresh-session`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ token: storedToken }),
+              });
+              const refreshData = await refreshRes.json();
+              console.log("Session refresh result:", refreshData);
+              
+              if (refreshData?.ok && refreshData?.user) {
+                authData = refreshData;
+                // Clear the stored token after successful refresh
+                localStorage.removeItem("session_token");
+              }
+            } catch (refreshErr) {
+              console.error("Session refresh error:", refreshErr);
+            }
+          }
+        }
+        
+        if (!authData?.user) {
+          // Still not authenticated - clear stored token and redirect to login
+          localStorage.removeItem("session_token");
           router.push("/login");
           return;
         }
@@ -75,6 +102,7 @@ function LibraryContent() {
       } catch (err) {
         console.error("Library error:", err);
         localStorage.removeItem("pending_order_id");
+        localStorage.removeItem("session_token");
         router.push("/login");
       } finally {
         setLoading(false);
