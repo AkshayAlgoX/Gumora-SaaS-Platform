@@ -100,6 +100,10 @@ function BuyNewButton({ productId }: { productId: string }) {
         throw new Error("No payment session ID received from server");
       }
 
+      // Store order ID in localStorage before redirecting to Cashfree
+      // This helps with cookie issues after redirect
+      localStorage.setItem("pending_order_id", res.order.id);
+
       const options: CashfreeCheckoutOptions = {
         paymentSessionId: res.cashfree.paymentSessionId,
         redirectTarget: "_self", // Redirects the current page
