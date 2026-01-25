@@ -44,6 +44,8 @@ export function createApp(){
     app.set('trust proxy', 1);
 
     const allowedOrigins = [
+        "https://gumora.shop",
+        "https://www.gumora.shop",
         "https://gamora-saas-platform.vercel.app",
         /^https:\/\/gamora-saas-platform-.*\.vercel\.app$/,
         process.env.FRONTEND_ORIGIN || "http://localhost:3000",
