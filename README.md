@@ -1,5 +1,7 @@
 # Gamora - Digital Products Marketplace
 
+🌐 **Live Demo:** [https://gumora.shop](https://gumora.shop)
+
 A production-ready, full-stack SaaS platform enabling creators to monetize digital products. Features AI-powered content import, secure payment processing, and enterprise-grade security. Demonstrates modern web development practices including TypeScript, CI/CD pipelines, caching, and comprehensive testing.
 
 ![CI/CD](https://github.com/AkshayAlgoX/gamora-saas-platform/actions/workflows/ci.yml/badge.svg)
