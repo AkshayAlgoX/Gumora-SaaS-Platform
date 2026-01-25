@@ -26,40 +26,7 @@ function LibraryContent() {
           dbOrderId = storedOrderId;
         }
         
-        // Check auth first
-        const authRes = await fetch(`${API}/api/auth/me`, { credentials: "include" });
-        const authData = await authRes.json();
-        
-        console.log("Auth check result:", authData);
-        
-        if (!authData?.user) {
-          // Check if coming back from payment - might need to wait for cookie
-          if (dbOrderId) {
-            // Coming from payment but not authenticated
-            console.log("Payment redirect detected but not authenticated, retrying...");
-            // Wait a moment and retry auth
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            const retryAuthRes = await fetch(`${API}/api/auth/me`, { credentials: "include" });
-            const retryAuthData = await retryAuthRes.json();
-            console.log("Retry auth result:", retryAuthData);
-            
-            if (!retryAuthData?.user) {
-              // Still not authenticated - clear stored order and redirect to login
-              localStorage.removeItem("pending_order_id");
-              alert("Session expired after payment. Please login again to see your purchase in Library.");
-              router.push("/login");
-              return;
-            }
-            setIsAuth(true);
-          } else {
-            router.push("/login");
-            return;
-          }
-        } else {
-          setIsAuth(true);
-        }
-        
-        // Process payment confirmation if we have an order ID
+        // If we have an order to confirm, do it FIRST (no auth required)
         if (dbOrderId) {
           setConfirmingPayment(true);
           // Remove query param from URL
@@ -67,24 +34,40 @@ function LibraryContent() {
           // Clear stored order ID
           localStorage.removeItem("pending_order_id");
           
-          // Confirm payment
+          // Confirm payment using PUBLIC endpoint (no auth required)
           console.log("Confirming payment for order:", dbOrderId);
-          const confirmRes = await fetch(`${API}/api/checkout/confirm`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ orderId: dbOrderId }),
-          });
-          const confirmData = await confirmRes.json();
-          console.log("Payment confirmation result:", confirmData);
-          
-          if (!confirmData.ok) {
-            console.error("Payment confirmation failed:", confirmData.error);
+          try {
+            const confirmRes = await fetch(`${API}/api/checkout/confirm-public`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ orderId: dbOrderId }),
+            });
+            const confirmData = await confirmRes.json();
+            console.log("Payment confirmation result:", confirmData);
+            
+            if (!confirmData.ok) {
+              console.error("Payment confirmation failed:", confirmData.error);
+            }
+          } catch (confirmErr) {
+            console.error("Payment confirmation error:", confirmErr);
           }
           setConfirmingPayment(false);
         }
         
-        // Load library items (after payment confirmation if applicable)
+        // Now check auth
+        const authRes = await fetch(`${API}/api/auth/me`, { credentials: "include" });
+        const authData = await authRes.json();
+        
+        console.log("Auth check result:", authData);
+        
+        if (!authData?.user) {
+          // Not authenticated - redirect to login
+          router.push("/login");
+          return;
+        }
+        setIsAuth(true);
+        
+        // Load library items
         const libRes = await fetch(`${API}/api/library`, { credentials: "include" });
         const libData = await libRes.json();
         console.log("Library items loaded:", libData);

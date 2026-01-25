@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { AuthedRequest, requireAuth } from "../middleware/requireAuth";
 import z from "zod";
 import { Product } from "../models/Product";
@@ -6,7 +6,6 @@ import { Cashfree } from "../lib/cashfree";
 import { Order } from "../models/Order";
 
 export const checkoutRouter = Router();
-checkoutRouter.use(requireAuth);
 
 // ---------------- SCHEMAS ----------------
 const CreateSessionSchema = z.object({
@@ -17,7 +16,72 @@ const ConfirmSchema = z.object({
   orderId: z.string().min(1),
 });
 
-// ---------------- CREATE SESSION ----------------
+// ---------------- PUBLIC: CONFIRM PAYMENT (no auth required) ----------------
+// This endpoint is called after Cashfree redirect when cookies may be lost
+checkoutRouter.post("/confirm-public", async (req: Request, res: Response) => {
+  try {
+    const { orderId } = ConfirmSchema.parse(req.body);
+    console.log("🔥 PUBLIC CONFIRM HIT for order:", orderId);
+
+    const order = await Order.findById(orderId);
+
+    if (!order) {
+      return res.status(400).json({ ok: false, error: "Order not found" });
+    }
+
+    if (order.status === "paid") {
+      console.log("Order already paid");
+      return res.json({ ok: true, alreadyPaid: true });
+    }
+
+    const CashfreeAny = Cashfree as any;
+
+    const payments = await CashfreeAny.PGOrderFetchPayments(
+      "2023-08-01",
+      order.providerOrderId
+    );
+
+    console.log("Cashfree payments:", payments.data);
+
+    const payment = payments.data?.[0];
+    if (!payment || payment.payment_status !== "SUCCESS") {
+      return res.status(400).json({
+        ok: false,
+        error: "Payment not successful",
+      });
+    }
+
+    await Order.updateOne(
+      { _id: order._id },
+      {
+        $set: {
+          status: "paid",
+          paidAt: new Date(),
+          providerPaymentId: payment.cf_payment_id,
+        },
+      }
+    );
+
+    await Product.updateOne(
+      { _id: order.productId },
+      { $inc: { "stats.soldCount": 1 } }
+    );
+
+    console.log("✅ Order confirmed successfully");
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("Public confirm error:", err);
+    return res.status(500).json({
+      ok: false,
+      error: "Internal server error",
+    });
+  }
+});
+
+// Apply auth middleware only to routes below this
+checkoutRouter.use(requireAuth);
+
+// ---------------- CREATE SESSION (requires auth) ----------------
 checkoutRouter.post("/create-session", async (req: AuthedRequest, res) => {
   try {
     console.log("🔥 CREATE SESSION HIT");
