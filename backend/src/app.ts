@@ -83,10 +83,27 @@ export function createApp(){
     app.use("/api/library",libraryRouter);
 
 
+    // Health check endpoint
     app.get("/healthz", (_req, res) => {
-  res.status(200).send("OK");
-});
+        res.status(200).send("OK");
+    });
 
+    // Root endpoint - API info
+    app.get("/", (_req, res) => {
+        res.json({
+            name: "Gumora API",
+            version: "1.0.0",
+            status: "running",
+            docs: "https://github.com/AkshayAlgoX/gamora-saas-platform",
+            endpoints: {
+                health: "/healthz",
+                auth: "/api/auth",
+                products: "/api/products",
+                checkout: "/api/checkout",
+                library: "/api/library"
+            }
+        });
+    });
 
     return app;
 
