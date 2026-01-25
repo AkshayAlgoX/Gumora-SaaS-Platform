@@ -10,8 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { apiClient } from "@/lib/api/client";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 export type LibraryItem = {
   productId: string;
@@ -70,31 +69,6 @@ function LibraryClient({ items }: { items: LibraryItem[] }) {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(false);
   const [active, setActive] = useState<LibraryItem | null>(null);
-
-  const searchParams = useSearchParams();
-  const router = useRouter();
-
-  useEffect(() => {
-    const dbOrderId = searchParams.get("db_order_id");
-    if (dbOrderId) {
-      // Remove query param from URL
-      const newUrl = window.location.pathname;
-      window.history.replaceState({}, "", newUrl);
-
-      const verifyPayment = async () => {
-        try {
-          await apiClient.post("/api/checkout/confirm", {
-            orderId: dbOrderId,
-          });
-          router.refresh();
-        } catch (e) {
-          console.error("Payment verification failed", e);
-        }
-      };
-
-      verifyPayment();
-    }
-  }, [searchParams, router]);
 
   async function openItem(item: LibraryItem) {
     setActive(item);

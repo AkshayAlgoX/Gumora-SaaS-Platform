@@ -19,8 +19,8 @@ export default function LoginPage() {
         });
         const data = await res.json();
         if (data?.user) {
-          // Already logged in - redirect to dashboard
-          router.push("/dashboard/products");
+          // Already logged in - redirect to dashboard immediately
+          router.replace("/dashboard/products");
           return;
         }
       } catch (err) {

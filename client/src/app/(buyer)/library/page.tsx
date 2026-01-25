@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import BuyerShell from "../../../../components/buyer/common/buyer-shell";
 import LibraryClient, { LibraryItem } from "../../../../components/buyer/library/library-client";
 
@@ -8,8 +8,10 @@ const API = process.env.NEXT_PUBLIC_API_URL;
 
 export default function LibPage() {
   const r = useRouter();
+  const searchParams = useSearchParams();
   const [l, setL] = useState(true);
   const [i, setI] = useState<LibraryItem[]>([]);
+  const [isAuth, setIsAuth] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -17,6 +19,23 @@ export default function LibPage() {
         const a = await fetch(`${API}/api/auth/me`, { credentials: "include" });
         const d = await a.json();
         if (!d?.user) return r.push("/login");
+        setIsAuth(true);
+        
+        // Check if coming back from payment
+        const dbOrderId = searchParams.get("db_order_id");
+        if (dbOrderId) {
+          // Confirm payment first
+          await fetch(`${API}/api/checkout/confirm`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ orderId: dbOrderId }),
+          });
+          // Remove query param from URL
+          window.history.replaceState({}, "", "/library");
+        }
+        
+        // Load library items
         const b = await fetch(`${API}/api/library`, { credentials: "include" });
         const e = await b.json();
         setI(e?.items ?? []);
@@ -26,10 +45,10 @@ export default function LibPage() {
         setL(false);
       }
     })();
-  }, [r]);
+  }, [r, searchParams]);
 
   return (
-    <BuyerShell>
+    <BuyerShell isUserLoggedIn={isAuth}>
       {l ? (
         <div className="flex h-screen items-center justify-center">Loading...</div>
       ) : (
