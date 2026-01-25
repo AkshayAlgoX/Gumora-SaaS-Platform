@@ -5,7 +5,11 @@
     "module": "CommonJS",
     "rootDir": "src",
     "outDir": "dist",
-    "strict": false,
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "types": ["node"]

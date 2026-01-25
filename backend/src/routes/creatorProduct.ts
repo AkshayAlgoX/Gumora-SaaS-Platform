@@ -5,6 +5,7 @@ import { Product } from '../models/Product';
 import { User } from '../models/Users';
 import { ImageAsset } from '../models/ImageAsset';
 import mongoose from 'mongoose';
+import { cacheDelete, CACHE_KEYS } from '../lib/cache';
 
 const toSlug = (str: string): string => {
   return str
@@ -167,7 +168,7 @@ return res.json({ ok: true, product });
 
 createProductRouter.patch("/:productId", async (req: AuthedRequest, res) => {
   try {
-       const {product,error} = await loadOwnProduct(req);
+       const {product} = await loadOwnProduct(req);
        
        if (!product) {
   return res.status(400).json({
@@ -298,6 +299,10 @@ if (assetCount === 0) {
     product.visibility = "published";
 product.stats.assetCount = assetCount;
 await product.save();
+
+// Invalidate products cache when a new product is published
+await cacheDelete(CACHE_KEYS.PRODUCTS_LIST);
+
 return res.json({ ok: true, product });
 
 

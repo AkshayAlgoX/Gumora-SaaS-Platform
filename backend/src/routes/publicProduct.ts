@@ -1,11 +1,18 @@
 import { Router } from "express";
 import { Product } from "../models/Product";
 import { ImageAsset } from "../models/ImageAsset";
+import { cacheGet, cacheSet, CACHE_KEYS, CACHE_TTL } from "../lib/cache";
 
 export const publicProductsRouter = Router();
 
-publicProductsRouter.get("/", async (req, res) => {
+publicProductsRouter.get("/", async (_req, res) => {
   try {
+    // Try cache first
+    const cached = await cacheGet<{ ok: boolean; products: unknown[] }>(CACHE_KEYS.PRODUCTS_LIST);
+    if (cached) {
+      return res.json(cached);
+    }
+
     const products = await Product.aggregate([
       {
         $match: { visibility: "published" },
@@ -37,7 +44,12 @@ publicProductsRouter.get("/", async (req, res) => {
       },
     ]);
 
-    return res.json({ ok: true, products });
+    const response = { ok: true, products };
+    
+    // Cache the result
+    await cacheSet(CACHE_KEYS.PRODUCTS_LIST, response, CACHE_TTL.PRODUCTS_LIST);
+
+    return res.json(response);
   } catch (e) {
     console.log(e);
     res.status(500).json({

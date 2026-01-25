@@ -1,5 +1,4 @@
 import {Response, Request, NextFunction} from 'express'
-import { verify } from 'jsonwebtoken';
 import { verifyJwt } from '../lib/auth';
 import { User } from '../models/Users';
 

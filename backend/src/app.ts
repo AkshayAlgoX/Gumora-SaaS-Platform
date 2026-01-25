@@ -3,6 +3,8 @@
 import cookieParser from 'cookie-parser';
 import express from 'express'; 
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { authRouter } from './routes/auth';
 import { createProductRouter } from './routes/creatorProduct';
 import { creatorImportRouter } from './routes/creatorImport';
@@ -11,10 +13,35 @@ import { publicProductsRouter } from './routes/publicProduct';
 import { checkoutRouter } from './routes/checkout';
 import { libraryRouter } from './routes/library';
 
+// Rate limiters
+const generalLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // 100 requests per window
+    message: { ok: false, error: 'Too many requests, please try again later' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 10, // 10 auth attempts per window
+    message: { ok: false, error: 'Too many auth attempts, please try again later' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
 
 export function createApp(){
 
     const app = express();
+
+    // Security headers
+    app.use(helmet({
+        crossOriginResourcePolicy: { policy: "cross-origin" },
+        contentSecurityPolicy: false, // Disable for API
+    }));
+
+    // Trust proxy for rate limiting behind reverse proxy (Render)
+    app.set('trust proxy', 1);
 
     const allowedOrigins = [
         "https://gamora-saas-platform.vercel.app",
@@ -38,7 +65,12 @@ export function createApp(){
     );
     
     app.use(cookieParser());
-    app.use(express.json({}));
+    app.use(express.json({ limit: '10mb' }));
+
+    // Apply rate limiters
+    app.use('/api/auth/login', authLimiter);
+    app.use('/api/auth/register', authLimiter);
+    app.use('/api/', generalLimiter);
 
     app.use("/api/auth",authRouter);
     app.use("/api/creator/products",createProductRouter)
