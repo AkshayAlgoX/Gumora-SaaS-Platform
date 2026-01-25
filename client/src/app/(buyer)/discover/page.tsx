@@ -73,7 +73,7 @@ export default function BuyerDiscoverPage() {
     "inline-flex h-9 items-center justify-center rounded-none bg-[#FF90E8] px-4 text-sm font-medium text-black hover:bg-[#FF90E8]/90 border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0";
 
   return (
-    <BuyerShell>
+    <BuyerShell isUserLoggedIn={isAuth}>
       <main className={wrap}>
         <div className="mb-8 space-y-2">
           <h1 className="text-4xl leading-none tracking-tight md:text-5xl">
