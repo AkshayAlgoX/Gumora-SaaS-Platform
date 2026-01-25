@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./screens/logo.png" alt="Gumora Logo" width="200"/>
+  <img src="./screens/logo1.png" alt="Gumora Logo" width="200"/>
 </p>
 
 <h1 align="center">🚀 Gumora - Digital Products Marketplace</h1>
