@@ -111,13 +111,14 @@ export default function CreatorSidebar() {
   const pathName = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
-
-  /* Persist collapse state */
-  useEffect(() => {
-    const stored = localStorage.getItem("creator-sidebar-collapsed");
-    if (stored) setCollapsed(stored === "true");
-  }, []);
+  const [collapsed, setCollapsed] = useState(() => {
+    // Lazy initialization to avoid hydration mismatch
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("creator-sidebar-collapsed");
+      return stored === "true";
+    }
+    return false;
+  });
 
   useEffect(() => {
     localStorage.setItem("creator-sidebar-collapsed", String(collapsed));

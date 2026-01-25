@@ -1,19 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export async function GET(req: NextRequest, { params }: any) {
-  return handle(req, params);
+type RouteParams = { params: Promise<{ path: string[] }> };
+
+export async function GET(req: NextRequest, { params }: RouteParams) {
+  return handle(req, await params);
 }
 
-export async function POST(req: NextRequest, { params }: any) {
-  return handle(req, params);
+export async function POST(req: NextRequest, { params }: RouteParams) {
+  return handle(req, await params);
 }
 
-export async function PUT(req: NextRequest, { params }: any) {
-  return handle(req, params);
+export async function PUT(req: NextRequest, { params }: RouteParams) {
+  return handle(req, await params);
 }
 
-export async function DELETE(req: NextRequest, { params }: any) {
-  return handle(req, params);
+export async function DELETE(req: NextRequest, { params }: RouteParams) {
+  return handle(req, await params);
 }
 
 async function handle(req: NextRequest, params: { path: string[] }) {

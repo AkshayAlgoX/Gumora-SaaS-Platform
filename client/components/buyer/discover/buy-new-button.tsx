@@ -77,7 +77,8 @@ function BuyNewButton({ productId }: { productId: string }) {
 
       console.log('Waiting for Cashfree to load...');
       await waitForCashfree();
-      if (!(window as any).Cashfree) {
+      const CashfreeSDK = (window as unknown as { Cashfree?: (config: { mode: string }) => { checkout: (options: CashfreeCheckoutOptions) => Promise<{ error?: { message: string } }> } }).Cashfree;
+      if (!CashfreeSDK) {
         throw new Error("Cashfree SDK not found on the page");
       }
 
@@ -86,9 +87,9 @@ function BuyNewButton({ productId }: { productId: string }) {
       // Use production or sandbox based on environment
       const cashfreeMode = process.env.NEXT_PUBLIC_CASHFREE_ENV === "production" ? "production" : "sandbox";
       
-      let cashfree: any;
+      let cashfree: { checkout: (options: CashfreeCheckoutOptions) => Promise<{ error?: { message: string } }> };
       try {
-        cashfree = (window as any).Cashfree({
+        cashfree = CashfreeSDK({
           mode: cashfreeMode,
         });
       } catch (e) {
@@ -109,7 +110,7 @@ function BuyNewButton({ productId }: { productId: string }) {
         if (tokenRes.data?.token) {
           localStorage.setItem("session_token", tokenRes.data.token);
         }
-      } catch (e) {
+      } catch {
         console.log("Could not store session token");
       }
 
@@ -123,9 +124,9 @@ function BuyNewButton({ productId }: { productId: string }) {
         const confirmResp = await apiClient.post<ConfirmRes>(
           "/api/checkout/confirm",
           {
-            orderId: res.order?.id!,
-            orderToken: res.cashfree?.orderToken!,
-            paymentSessionId: res.cashfree?.paymentSessionId!,
+            orderId: res.order?.id ?? "",
+            orderToken: res.cashfree?.orderToken ?? "",
+            paymentSessionId: res.cashfree?.paymentSessionId ?? "",
           }
         );
 

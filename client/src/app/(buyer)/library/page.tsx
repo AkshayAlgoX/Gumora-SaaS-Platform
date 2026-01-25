@@ -55,7 +55,7 @@ function LibraryContent() {
         }
         
         // Now check auth
-        let authRes = await fetch(`${API}/api/auth/me`, { credentials: "include" });
+        const authRes = await fetch(`${API}/api/auth/me`, { credentials: "include" });
         let authData = await authRes.json();
         
         console.log("Auth check result:", authData);

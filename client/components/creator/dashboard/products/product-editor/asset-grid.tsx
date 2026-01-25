@@ -14,7 +14,7 @@ export default function AssetsGrid({
   assets: ImageAsset[];
   title: string;
   actionLabel?: (asset: ImageAsset) => string;
-  isActionActive: (asset: ImageAsset) => Boolean;
+  isActionActive: (asset: ImageAsset) => boolean;
   onAction: (asset: ImageAsset) => void;
   emptyText: string;
 }) {
