@@ -57,8 +57,8 @@
 ## ⚡ What is Gumora?
 
 Gumora is a **Gumroad-style digital marketplace** where creators can:
-- Upload and sell digital products (PDFs, videos, courses, templates)
-- Import existing products using AI-powered web scraping
+- Sell digital products with AI-powered product import from existing marketplaces
+- Import product details, images, and pricing automatically using web scraping
 - Accept payments via Cashfree payment gateway
 - Track sales and revenue in real-time
 
