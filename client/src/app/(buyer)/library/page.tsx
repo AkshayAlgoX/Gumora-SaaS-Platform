@@ -20,11 +20,36 @@ function LibraryContent() {
         // Check auth first
         const authRes = await fetch(`${API}/api/auth/me`, { credentials: "include" });
         const authData = await authRes.json();
+        
+        console.log("Auth check result:", authData);
+        
         if (!authData?.user) {
-          router.push("/login");
-          return;
+          // Check if coming back from payment - might need to wait for cookie
+          const dbOrderId = searchParams.get("db_order_id");
+          if (dbOrderId) {
+            // Coming from payment but not authenticated
+            // This can happen due to cookie timing issues
+            console.log("Payment redirect detected but not authenticated, retrying...");
+            // Wait a moment and retry auth
+            await new Promise(resolve => setTimeout(resolve, 500));
+            const retryAuthRes = await fetch(`${API}/api/auth/me`, { credentials: "include" });
+            const retryAuthData = await retryAuthRes.json();
+            console.log("Retry auth result:", retryAuthData);
+            
+            if (!retryAuthData?.user) {
+              // Still not authenticated - redirect to login
+              alert("Session expired after payment. Please login again to see your purchase in Library.");
+              router.push("/login");
+              return;
+            }
+            setIsAuth(true);
+          } else {
+            router.push("/login");
+            return;
+          }
+        } else {
+          setIsAuth(true);
         }
-        setIsAuth(true);
         
         // Check if coming back from payment
         const dbOrderId = searchParams.get("db_order_id");
