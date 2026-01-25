@@ -178,31 +178,31 @@ createProductRouter.patch("/:productId", async (req: AuthedRequest, res) => {
 
   const { title, description, price } = req.body ?? {}
 
-if (typeof title === 'string' && title.trim()) {
-  product.title = title.trim()
+  if (typeof title === 'string' && title.trim()) {
+    product.title = title.trim()
 
-  const baseSlug = toSlug(product.title)
-  const slug = await ensureUniqueSlug(baseSlug, async (s) => {
-    const existing = await Product.findOne({ slug: s }).lean();
+    const baseSlug = toSlug(product.title)
+    const slug = await ensureUniqueSlug(baseSlug, async (s) => {
+      const existing = await Product.findOne({ slug: s }).lean();
 
-    if (!existing) return false;
-    return String(existing._id) !== String(product._id)
-  })
+      if (!existing) return false;
+      return String(existing._id) !== String(product._id)
+    })
 
-  product.slug =slug;
-
-  if (typeof description === 'string' && description.trim()){
-    product.description=description.trim()
+    product.slug = slug;
   }
-  if(typeof price==='number'){
-    product.price=price
+
+  if (typeof description === 'string' && description.trim()) {
+    product.description = description.trim()
+  }
+  
+  if (typeof price === 'number') {
+    product.price = price
   }
 
   await product.save()
 
-return res.json({ ok: true, product })
-
-}
+  return res.json({ ok: true, product })
 
  
   } catch (e) {
