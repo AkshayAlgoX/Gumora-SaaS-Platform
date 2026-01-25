@@ -1,62 +1,90 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import BuyerShell from "../../../../components/buyer/common/buyer-shell";
 import LibraryClient, { LibraryItem } from "../../../../components/buyer/library/library-client";
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
-export default function LibPage() {
-  const r = useRouter();
+function LibraryContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const [l, setL] = useState(true);
-  const [i, setI] = useState<LibraryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<LibraryItem[]>([]);
   const [isAuth, setIsAuth] = useState(false);
+  const [confirmingPayment, setConfirmingPayment] = useState(false);
 
   useEffect(() => {
-    (async () => {
+    const loadLibrary = async () => {
       try {
-        const a = await fetch(`${API}/api/auth/me`, { credentials: "include" });
-        const d = await a.json();
-        if (!d?.user) return r.push("/login");
+        // Check auth first
+        const authRes = await fetch(`${API}/api/auth/me`, { credentials: "include" });
+        const authData = await authRes.json();
+        if (!authData?.user) {
+          router.push("/login");
+          return;
+        }
         setIsAuth(true);
         
         // Check if coming back from payment
         const dbOrderId = searchParams.get("db_order_id");
         if (dbOrderId) {
-          // Confirm payment first
-          await fetch(`${API}/api/checkout/confirm`, {
+          setConfirmingPayment(true);
+          // Remove query param from URL first
+          window.history.replaceState({}, "", "/library");
+          
+          // Confirm payment
+          const confirmRes = await fetch(`${API}/api/checkout/confirm`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "include",
             body: JSON.stringify({ orderId: dbOrderId }),
           });
-          // Remove query param from URL
-          window.history.replaceState({}, "", "/library");
+          const confirmData = await confirmRes.json();
+          console.log("Payment confirmation result:", confirmData);
+          setConfirmingPayment(false);
         }
         
-        // Load library items
-        const b = await fetch(`${API}/api/library`, { credentials: "include" });
-        const e = await b.json();
-        setI(e?.items ?? []);
-      } catch {
-        r.push("/login");
+        // Load library items (after payment confirmation if applicable)
+        const libRes = await fetch(`${API}/api/library`, { credentials: "include" });
+        const libData = await libRes.json();
+        console.log("Library items loaded:", libData);
+        setItems(libData?.items ?? []);
+      } catch (err) {
+        console.error("Library error:", err);
+        router.push("/login");
       } finally {
-        setL(false);
+        setLoading(false);
       }
-    })();
-  }, [r, searchParams]);
+    };
+    
+    loadLibrary();
+  }, [router, searchParams]);
+
+  if (loading || confirmingPayment) {
+    return (
+      <BuyerShell isUserLoggedIn={isAuth}>
+        <div className="flex h-screen items-center justify-center">
+          {confirmingPayment ? "Confirming payment..." : "Loading..."}
+        </div>
+      </BuyerShell>
+    );
+  }
 
   return (
     <BuyerShell isUserLoggedIn={isAuth}>
-      {l ? (
-        <div className="flex h-screen items-center justify-center">Loading...</div>
-      ) : (
-        <main className="px-4 py-10 lg:px-[8vw]">
-          <h1 className="mb-8 text-5xl font-normal leading-none tracking-tight">Library</h1>
-          <LibraryClient items={i} />
-        </main>
-      )}
+      <main className="px-4 py-10 lg:px-[8vw]">
+        <h1 className="mb-8 text-5xl font-normal leading-none tracking-tight">Library</h1>
+        <LibraryClient items={items} />
+      </main>
     </BuyerShell>
+  );
+}
+
+export default function LibPage() {
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center">Loading...</div>}>
+      <LibraryContent />
+    </Suspense>
   );
 }

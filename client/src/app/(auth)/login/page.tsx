@@ -9,7 +9,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export default function LoginPage() {
   const router = useRouter();
-  const [checking, setChecking] = useState(true);
+  const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -19,22 +19,24 @@ export default function LoginPage() {
         });
         const data = await res.json();
         if (data?.user) {
-          // Already logged in - redirect to dashboard immediately
-          router.replace("/dashboard/products");
+          // Already logged in - redirect immediately, don't show anything
+          window.location.href = "/dashboard/products";
           return;
         }
       } catch (err) {
         console.error("Auth check error:", err);
       }
-      setChecking(false);
+      // Only show form if not logged in
+      setShowForm(true);
     };
 
     checkAuth();
   }, [router]);
 
-  if (checking) {
+  // Show nothing while checking or redirecting
+  if (!showForm) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex items-center justify-center h-screen bg-[#f6f6f4]">
         <span>Loading...</span>
       </div>
     );

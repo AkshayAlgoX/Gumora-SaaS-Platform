@@ -9,7 +9,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [checking, setChecking] = useState(true);
+  const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -19,22 +19,22 @@ export default function RegisterPage() {
         });
         const data = await res.json();
         if (data?.user) {
-          // Already logged in - redirect to dashboard
-          router.push("/dashboard/products");
+          // Already logged in - redirect immediately
+          window.location.href = "/dashboard/products";
           return;
         }
       } catch (err) {
         console.error("Auth check error:", err);
       }
-      setChecking(false);
+      setShowForm(true);
     };
 
     checkAuth();
   }, [router]);
 
-  if (checking) {
+  if (!showForm) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex items-center justify-center h-screen bg-[#f6f6f4]">
         <span>Loading...</span>
       </div>
     );
