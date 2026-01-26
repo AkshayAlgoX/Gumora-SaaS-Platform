@@ -1,5 +1,5 @@
 import { Cashfree, CFEnvironment } from "cashfree-pg";
-
+console.log("CASHFREE KEYS:", Object.keys(Cashfree));   // 
 const CF = Cashfree as any;
 
 CF.clientId = process.env.CASHFREE_APP_ID!;
