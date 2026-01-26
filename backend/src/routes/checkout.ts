@@ -7,7 +7,6 @@ import { Cashfree } from "../lib/cashfree";
 
 const CF = Cashfree as any;
 
-
 export const checkoutRouter = Router();
 
 /* ---------------- Schemas ---------------- */
@@ -21,7 +20,7 @@ const ConfirmSchema = z.object({
 });
 
 /* ======================================================
-   PUBLIC CONFIRM (called after redirect)
+   PUBLIC CONFIRM
 ====================================================== */
 
 checkoutRouter.post("/confirm-public", async (req: Request, res: Response) => {
@@ -33,9 +32,9 @@ checkoutRouter.post("/confirm-public", async (req: Request, res: Response) => {
 
     if (order.status === "paid") return res.json({ ok: true });
 
-    const payments = await CF.orders.fetchPayments(order.providerOrderId);
+    const payments = await CF.PGOrderFetchPayments(order.providerOrderId);
 
-    const payment = payments.data?.[0];
+    const payment = payments?.data?.[0];
 
     if (!payment || payment.payment_status !== "SUCCESS") {
       return res.status(400).json({ ok: false });
@@ -77,7 +76,6 @@ checkoutRouter.post("/create-session", async (req: AuthedRequest, res) => {
     const { productId } = CreateSessionSchema.parse(req.body);
 
     const product = await Product.findById(productId).lean();
-
     if (!product || product.visibility !== "published") {
       return res.status(404).json({ ok: false });
     }
@@ -109,7 +107,7 @@ checkoutRouter.post("/create-session", async (req: AuthedRequest, res) => {
       },
     };
 
-    const cfResp = await CF.orders.create(orderRequest);
+    const cfResp = await CF.PGCreateOrder(orderRequest);
 
     return res.json({
       ok: true,
@@ -145,12 +143,11 @@ checkoutRouter.post("/confirm", async (req: AuthedRequest, res) => {
     });
 
     if (!order) return res.status(400).json({ ok: false });
-
     if (order.status === "paid") return res.json({ ok: true });
 
-    const payments = await CF.orders.fetchPayments(order.providerOrderId);
+    const payments = await CF.PGOrderFetchPayments(order.providerOrderId);
 
-    const payment = payments.data?.[0];
+    const payment = payments?.data?.[0];
 
     if (!payment || payment.payment_status !== "SUCCESS") {
       return res.status(400).json({ ok: false });
