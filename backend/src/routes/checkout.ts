@@ -1,13 +1,17 @@
 import { Router, Request, Response } from "express";
-import { AuthedRequest, requireAuth } from "../middleware/requireAuth";
 import z from "zod";
+import { requireAuth, AuthedRequest } from "../middleware/requireAuth";
 import { Product } from "../models/Product";
-import { Cashfree } from "../lib/cashfree";
 import { Order } from "../models/Order";
+import { Cashfree } from "../lib/cashfree";
+
+const CF = Cashfree as any;
+
 
 export const checkoutRouter = Router();
 
-// ---------------- SCHEMAS ----------------
+/* ---------------- Schemas ---------------- */
+
 const CreateSessionSchema = z.object({
   productId: z.string().min(1),
 });
@@ -16,39 +20,25 @@ const ConfirmSchema = z.object({
   orderId: z.string().min(1),
 });
 
-// ---------------- PUBLIC: CONFIRM PAYMENT (no auth required) ----------------
-// This endpoint is called after Cashfree redirect when cookies may be lost
+/* ======================================================
+   PUBLIC CONFIRM (called after redirect)
+====================================================== */
+
 checkoutRouter.post("/confirm-public", async (req: Request, res: Response) => {
   try {
     const { orderId } = ConfirmSchema.parse(req.body);
-    console.log("🔥 PUBLIC CONFIRM HIT for order:", orderId);
 
     const order = await Order.findById(orderId);
+    if (!order) return res.status(400).json({ ok: false });
 
-    if (!order) {
-      return res.status(400).json({ ok: false, error: "Order not found" });
-    }
+    if (order.status === "paid") return res.json({ ok: true });
 
-    if (order.status === "paid") {
-      console.log("Order already paid");
-      return res.json({ ok: true, alreadyPaid: true });
-    }
-
-    const CashfreeAny = Cashfree as any;
-
-    const payments = await CashfreeAny.PGOrderFetchPayments(
-      "2023-08-01",
-      order.providerOrderId
-    );
-
-    console.log("Cashfree payments:", payments.data);
+    const payments = await CF.orders.fetchPayments(order.providerOrderId);
 
     const payment = payments.data?.[0];
+
     if (!payment || payment.payment_status !== "SUCCESS") {
-      return res.status(400).json({
-        ok: false,
-        error: "Payment not successful",
-      });
+      return res.status(400).json({ ok: false });
     }
 
     await Order.updateOne(
@@ -67,38 +57,29 @@ checkoutRouter.post("/confirm-public", async (req: Request, res: Response) => {
       { $inc: { "stats.soldCount": 1 } }
     );
 
-    console.log("✅ Order confirmed successfully");
     return res.json({ ok: true });
   } catch (err) {
-    console.error("Public confirm error:", err);
-    return res.status(500).json({
-      ok: false,
-      error: "Internal server error",
-    });
+    console.error(err);
+    return res.status(500).json({ ok: false });
   }
 });
 
-// Apply auth middleware only to routes below this
+/* ======================================================
+   AUTH REQUIRED BELOW
+====================================================== */
+
 checkoutRouter.use(requireAuth);
 
-// ---------------- CREATE SESSION (requires auth) ----------------
+/* ---------------- CREATE SESSION ---------------- */
+
 checkoutRouter.post("/create-session", async (req: AuthedRequest, res) => {
   try {
-    console.log("🔥 CREATE SESSION HIT");
-    console.log("ENV:", {
-      APP_ID: process.env.CASHFREE_APP_ID,
-      ENV: process.env.CASHFREE_ENV,
-    });
-
     const { productId } = CreateSessionSchema.parse(req.body);
 
     const product = await Product.findById(productId).lean();
-    if (!product || product.visibility !== "published") {
-      return res.status(404).json({ ok: false, error: "Product not found" });
-    }
 
-    if (typeof product.price !== "number" || product.price <= 0) {
-      return res.status(400).json({ ok: false, error: "Invalid price" });
+    if (!product || product.visibility !== "published") {
+      return res.status(404).json({ ok: false });
     }
 
     const providerOrderId = `prod_${product._id}_${Date.now()}`;
@@ -128,12 +109,7 @@ checkoutRouter.post("/create-session", async (req: AuthedRequest, res) => {
       },
     };
 
-    console.log("Cashfree order request:", orderRequest);
-
-    // Use correct Cashfree SDK method
-    const cfResp = await Cashfree.PG.orders.create(orderRequest);
-
-    console.log("Cashfree order response:", cfResp.data);
+    const cfResp = await CF.orders.create(orderRequest);
 
     return res.json({
       ok: true,
@@ -152,15 +128,13 @@ checkoutRouter.post("/create-session", async (req: AuthedRequest, res) => {
       },
     });
   } catch (err: any) {
-    console.error("Checkout error:", err?.response?.data || err);
-    return res.status(500).json({
-      ok: false,
-      error: "Internal server error",
-    });
+    console.error(err?.response?.data || err);
+    return res.status(500).json({ ok: false });
   }
 });
 
-// ---------------- CONFIRM PAYMENT ----------------
+/* ---------------- CONFIRM (AUTH) ---------------- */
+
 checkoutRouter.post("/confirm", async (req: AuthedRequest, res) => {
   try {
     const { orderId } = ConfirmSchema.parse(req.body);
@@ -170,20 +144,16 @@ checkoutRouter.post("/confirm", async (req: AuthedRequest, res) => {
       buyerId: req.user!.id,
     });
 
-    if (!order) {
-      return res.status(400).json({ ok: false, error: "Order not found" });
-    }
+    if (!order) return res.status(400).json({ ok: false });
 
     if (order.status === "paid") return res.json({ ok: true });
 
-    const payments = await Cashfree.PG.orders.fetchPayments(order.providerOrderId);
+    const payments = await CF.orders.fetchPayments(order.providerOrderId);
 
     const payment = payments.data?.[0];
+
     if (!payment || payment.payment_status !== "SUCCESS") {
-      return res.status(400).json({
-        ok: false,
-        error: "Payment not successful",
-      });
+      return res.status(400).json({ ok: false });
     }
 
     await Order.updateOne(
@@ -205,9 +175,6 @@ checkoutRouter.post("/confirm", async (req: AuthedRequest, res) => {
     return res.json({ ok: true });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({
-      ok: false,
-      error: "Internal server error",
-    });
+    return res.status(500).json({ ok: false });
   }
 });
