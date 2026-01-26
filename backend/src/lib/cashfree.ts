@@ -1,10 +1,12 @@
-import Cashfree from "cashfree-pg";
+import { Cashfree, CFEnvironment } from "cashfree-pg";
 
 const CF = Cashfree as any;
 
-CF.XClientId = process.env.CASHFREE_APP_ID!;
-CF.XClientSecret = process.env.CASHFREE_SECRET_KEY!;
-CF.XEnvironment =
-  process.env.CASHFREE_ENV === "production" ? "PRODUCTION" : "SANDBOX";
+CF.clientId = process.env.CASHFREE_APP_ID!;
+CF.clientSecret = process.env.CASHFREE_SECRET_KEY!;
+CF.environment =
+  process.env.CASHFREE_ENV === "production"
+    ? CFEnvironment.PRODUCTION
+    : CFEnvironment.SANDBOX;
 
 export { Cashfree };
