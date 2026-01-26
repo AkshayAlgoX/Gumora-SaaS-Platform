@@ -1,3 +1,12 @@
+# Note on E2E Tests
+
+The end-to-end (E2E) tests in this project require the website (frontend and backend) to be running and accessible locally. If the server is not running when you execute `npm run test:e2e`, some tests may fail (for example, tests that check the login page).
+
+If you see failed E2E tests, please ensure that:
+- The frontend and backend servers are running locally.
+- The application is accessible at the expected URL.
+
+This is expected behavior if the site is not running during test execution. For more details, see the test files and Playwright documentation.
 <p align="center">
   <img src="./screens/logo1.png" alt="Gumora Logo" width="80"/>
 </p>
