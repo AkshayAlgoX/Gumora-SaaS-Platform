@@ -3,13 +3,9 @@ import z from "zod";
 import { requireAuth, AuthedRequest } from "../middleware/requireAuth";
 import { Product } from "../models/Product";
 import { Order } from "../models/Order";
-import { Cashfree } from "../lib/cashfree";
-
-const CF = Cashfree as any;
+import { cashfree } from "../lib/cashfree";
 
 export const checkoutRouter = Router();
-
-/* ---------------- Schemas ---------------- */
 
 const CreateSessionSchema = z.object({
   productId: z.string().min(1),
@@ -19,9 +15,7 @@ const ConfirmSchema = z.object({
   orderId: z.string().min(1),
 });
 
-/* ======================================================
-   PUBLIC CONFIRM
-====================================================== */
+/* ================= PUBLIC CONFIRM ================= */
 
 checkoutRouter.post("/confirm-public", async (req: Request, res: Response) => {
   try {
@@ -30,25 +24,15 @@ checkoutRouter.post("/confirm-public", async (req: Request, res: Response) => {
     const order = await Order.findById(orderId);
     if (!order) return res.status(400).json({ ok: false });
 
-    if (order.status === "paid") return res.json({ ok: true });
+    const resp = await cashfree.get(`/orders/${order.providerOrderId}`);
 
-    const payments = await CF.PGOrderFetchPayments(order.providerOrderId);
-
-    const payment = payments?.data?.[0];
-
-    if (!payment || payment.payment_status !== "SUCCESS") {
+    if (resp.data.order_status !== "PAID") {
       return res.status(400).json({ ok: false });
     }
 
     await Order.updateOne(
       { _id: order._id },
-      {
-        $set: {
-          status: "paid",
-          paidAt: new Date(),
-          providerPaymentId: payment.cf_payment_id,
-        },
-      }
+      { $set: { status: "paid", paidAt: new Date() } }
     );
 
     await Product.updateOne(
@@ -57,28 +41,24 @@ checkoutRouter.post("/confirm-public", async (req: Request, res: Response) => {
     );
 
     return res.json({ ok: true });
-  } catch (err) {
-    console.error(err);
+  } catch (e) {
+    console.error(e);
     return res.status(500).json({ ok: false });
   }
 });
 
-/* ======================================================
-   AUTH REQUIRED BELOW
-====================================================== */
+/* ================= AUTH BELOW ================= */
 
 checkoutRouter.use(requireAuth);
 
-/* ---------------- CREATE SESSION ---------------- */
+/* ================= CREATE SESSION ================= */
 
 checkoutRouter.post("/create-session", async (req: AuthedRequest, res) => {
   try {
     const { productId } = CreateSessionSchema.parse(req.body);
 
     const product = await Product.findById(productId).lean();
-    if (!product || product.visibility !== "published") {
-      return res.status(404).json({ ok: false });
-    }
+    if (!product) return res.status(404).json({ ok: false });
 
     const providerOrderId = `prod_${product._id}_${Date.now()}`;
 
@@ -107,31 +87,23 @@ checkoutRouter.post("/create-session", async (req: AuthedRequest, res) => {
       },
     };
 
-    const cfResp = await CF.PGCreateOrder(orderRequest);
+    const cfResp = await cashfree.post("/orders", orderRequest);
 
     return res.json({
       ok: true,
       cashfree: {
-        appId: process.env.CASHFREE_APP_ID,
-        orderId: cfResp.data.order_id,
-        orderToken: cfResp.data.order_token,
         paymentSessionId: cfResp.data.payment_session_id,
-        amount: product.price,
-        currency: "INR",
+        orderId: cfResp.data.order_id,
       },
-      order: {
-        id: dbOrder._id.toString(),
-        title: product.title,
-        description: product.description,
-      },
+      order: { id: dbOrder._id.toString() },
     });
-  } catch (err: any) {
-    console.error(err?.response?.data || err);
+  } catch (e: any) {
+    console.error("CREATE SESSION ERROR:", e.response?.data || e);
     return res.status(500).json({ ok: false });
   }
 });
 
-/* ---------------- CONFIRM (AUTH) ---------------- */
+/* ================= CONFIRM ================= */
 
 checkoutRouter.post("/confirm", async (req: AuthedRequest, res) => {
   try {
@@ -143,25 +115,16 @@ checkoutRouter.post("/confirm", async (req: AuthedRequest, res) => {
     });
 
     if (!order) return res.status(400).json({ ok: false });
-    if (order.status === "paid") return res.json({ ok: true });
 
-    const payments = await CF.PGOrderFetchPayments(order.providerOrderId);
+    const resp = await cashfree.get(`/orders/${order.providerOrderId}`);
 
-    const payment = payments?.data?.[0];
-
-    if (!payment || payment.payment_status !== "SUCCESS") {
+    if (resp.data.order_status !== "PAID") {
       return res.status(400).json({ ok: false });
     }
 
     await Order.updateOne(
       { _id: order._id },
-      {
-        $set: {
-          status: "paid",
-          paidAt: new Date(),
-          providerPaymentId: payment.cf_payment_id,
-        },
-      }
+      { $set: { status: "paid", paidAt: new Date() } }
     );
 
     await Product.updateOne(
@@ -170,8 +133,8 @@ checkoutRouter.post("/confirm", async (req: AuthedRequest, res) => {
     );
 
     return res.json({ ok: true });
-  } catch (err) {
-    console.error(err);
+  } catch (e) {
+    console.error(e);
     return res.status(500).json({ ok: false });
   }
 });
