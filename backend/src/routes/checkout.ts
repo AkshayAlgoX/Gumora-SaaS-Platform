@@ -130,13 +130,8 @@ checkoutRouter.post("/create-session", async (req: AuthedRequest, res) => {
 
     console.log("Cashfree order request:", orderRequest);
 
-    // 🔥 IMPORTANT: Cast Cashfree to any (TS fix)
-    const CashfreeAny = Cashfree as any;
-
-    const cfResp = await CashfreeAny.PGCreateOrder(
-      "2023-08-01",
-      orderRequest
-    );
+    // Use correct Cashfree SDK method
+    const cfResp = await Cashfree.PG.orders.create(orderRequest);
 
     console.log("Cashfree order response:", cfResp.data);
 
@@ -181,12 +176,7 @@ checkoutRouter.post("/confirm", async (req: AuthedRequest, res) => {
 
     if (order.status === "paid") return res.json({ ok: true });
 
-    const CashfreeAny = Cashfree as any;
-
-    const payments = await CashfreeAny.PGOrderFetchPayments(
-      "2023-08-01",
-      order.providerOrderId
-    );
+    const payments = await Cashfree.PG.orders.fetchPayments(order.providerOrderId);
 
     const payment = payments.data?.[0];
     if (!payment || payment.payment_status !== "SUCCESS") {
