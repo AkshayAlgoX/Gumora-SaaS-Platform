@@ -245,10 +245,10 @@ Located in [`client/e2e/basic.spec.ts`](client/e2e/basic.spec.ts):
 * **Backend Health Probe**: End-to-end network check ensuring the frontend can communicate with the backend.
 
 ### 3. Automated CI/CD Pipeline ([`.github/workflows/ci.yml`](.github/workflows/ci.yml))
-Every push to `main` runs three sequential jobs:
-1. `backend`: Node 20 setup $\rightarrow$ `npm ci` $\rightarrow$ `npm run typecheck` $\rightarrow$ `npm test` (Vitest) $\rightarrow$ `npm run build`.
-2. `frontend`: Node 20 setup $\rightarrow$ `npm ci` $\rightarrow$ `npm run typecheck` $\rightarrow$ `npm run lint` $\rightarrow$ `npm run build`.
-3. `e2e`: Installs Playwright Chromium browsers and runs end-to-end verification. **This job is gated to `refs/heads/main` only** — it does not execute on pull request or feature branch pushes. The CI environment targets `gamora-saas-platform.vercel.app` (Vercel preview deployment). Note: the `NEXT_PUBLIC_API_URL` variable in the CI workflow points to `gumora-platform-backend.onrender.com`; if that Render instance is suspended, the backend health probe test will be skipped silently by the current spec.
+The workflow triggers on pull requests and pushes to `main`. It runs backend and frontend jobs in parallel, followed conditionally by end-to-end verification:
+1. `backend` (parallel): Node 20 setup $\rightarrow$ `npm ci` $\rightarrow$ `npm run typecheck` $\rightarrow$ `npm test` (Vitest) $\rightarrow$ `npm run build`.
+2. `frontend` (parallel): Node 20 setup $\rightarrow$ `npm ci` $\rightarrow$ `npm run typecheck` $\rightarrow$ `npm run lint` $\rightarrow$ `npm run build`.
+3. `e2e` (dependent & conditional): Depends on both `backend` and `frontend` completing successfully (`needs: [backend, frontend]`), and is gated to `refs/heads/main` pushes only (`if: github.ref == 'refs/heads/main'`). It installs Playwright Chromium browsers and runs end-to-end verification against the Vercel preview deployment (`gamora-saas-platform.vercel.app`). Note: because the CI workflow points `NEXT_PUBLIC_API_URL` to `gumora-platform-backend.onrender.com`, if that Render instance is suspended, the backend health probe test will be skipped by the current spec.
 
 ---
 
