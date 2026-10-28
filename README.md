@@ -27,7 +27,7 @@ The platform is designed around a decoupled dual-host architecture: a Next.js 16
 2. **Cross-Origin Session Security**: Configured for independent cross-domain deployment (Vercel frontend $\longleftrightarrow$ Render backend) using signed JWT cookies with `SameSite=None; Secure; HttpOnly`, fortified with Helmet security headers, CORS origin whitelisting, and tiered rate limiting.
 3. **Multi-Tier Redis Caching**: Integrates Upstash Redis ([`backend/src/lib/cache.ts`](backend/src/lib/cache.ts)) with structured key namespaces for product listings (60s TTL), slug-based lookups (300s TTL), and user libraries (60s TTL). Utilizes non-blocking cursor-based `SCAN` pattern purging to ensure cache consistency without blocking the event loop.
 4. **Firecrawl Ingestion & Media Pipeline**: Creators can import products by URL ([`backend/src/routes/creatorImport.ts`](backend/src/routes/creatorImport.ts)). Firecrawl extracts product descriptions constrained to strict JSON schemas, while candidate assets undergo Sharp-based dimension and MIME validation before Cloudinary CDN ingestion.
-5. **Full-Spectrum Testing & CI/CD**: Backed by a multi-stage GitHub Actions pipeline executing TypeScript compilation (`tsc --noEmit`), Vitest unit/middleware tests, and Playwright Chromium end-to-end user journeys against live routes.
+5. **Full-Spectrum Testing & CI/CD**: Backed by a multi-stage GitHub Actions pipeline executing TypeScript compilation (`tsc --noEmit`), Vitest unit/middleware tests, and Playwright Chromium end-to-end tests. The E2E job runs on `main` branch pushes only, targeting a Vercel preview deployment.
 
 ---
 
@@ -36,8 +36,8 @@ The platform is designed around a decoupled dual-host architecture: a Next.js 16
 > [!NOTE]
 > **Current Deployment State (October 2026):**
 > * **Frontend Client**: Deployed on Vercel at [**https://www.gumora.shop**](https://www.gumora.shop) (accessible).
-> * **Backend API Service**: Configured on Render at `https://api.gumora.shop`. Because the backend is hosted on Render's on-demand free tier, it enters an automated suspended state after periods of inactivity.
-> * **Local Evaluation**: For a complete, instantaneous, zero-latency evaluation with full backend and database functionality, follow the [Local Development Setup](#local-development-setup) instructions below.
+> * **Backend API Service**: Configured on Render at `https://api.gumora.shop` (custom domain). The backend is hosted on Render's free tier and enters an automated suspended state after periods of inactivity. At the time of documentation, the backend endpoint returns HTTP 503 (`x-render-routing: suspend`) and is not actively serving requests.
+> * **Local Evaluation**: For a fully functional evaluation with backend and database, follow the [Local Development Setup](#local-development-setup) instructions below.
 
 ---
 
@@ -129,13 +129,13 @@ Payment fraud frequently arises from client-side state manipulation (e.g. spoofi
       │                        │────────────────────────────►│                        │
       │                        │◄────────────────────────────┤ order_status: "PAID"   │
       │                        │                             │                        │
-      │                        │ Atomic State Transition ────┼───────────────────────►├─► Order (paid)
+      │                        │ Sequential DB Writes ───────┼───────────────────────►├─► Order (paid)
       │                        │ (status="paid", paidAt=now) │                        ├─► Product (soldCount +1)
       │◄── 200 OK (Purchased) ─┤                             │                        │
 ```
 
 1. **Session Creation**: The client requests a checkout session for a valid `productId`. The backend persists an order with `status: "pending"` and dispatches an authenticated request to Cashfree (`/orders`), receiving a `payment_session_id`.
-2. **Authoritative Verification**: When the buyer returns to the application, `/api/checkout/confirm` queries Cashfree directly. Only if `resp.data.order_status === "PAID"` does the system update the order record and atomically increment the creator's product sales counter (`stats.soldCount`).
+2. **Authoritative Verification**: When the buyer returns to the application, `/api/checkout/confirm` queries Cashfree directly. Only if `resp.data.order_status === "PAID"` does the system update the order record and subsequently increment the creator's product sales counter (`stats.soldCount`) in a second database write.
 3. **Public Re-Check**: For unauthenticated redirect scenarios, `/api/checkout/confirm-public` validates the provider status without exposing user profile details.
 
 ### 2. Cross-Origin Session Security ([`backend/src/middleware/requireAuth.ts`](backend/src/middleware/requireAuth.ts))
@@ -245,10 +245,10 @@ Located in [`client/e2e/basic.spec.ts`](client/e2e/basic.spec.ts):
 * **Backend Health Probe**: End-to-end network check ensuring the frontend can communicate with the backend.
 
 ### 3. Automated CI/CD Pipeline ([`.github/workflows/ci.yml`](.github/workflows/ci.yml))
-Every commit to `main` runs:
+Every push to `main` runs three sequential jobs:
 1. `backend`: Node 20 setup $\rightarrow$ `npm ci` $\rightarrow$ `npm run typecheck` $\rightarrow$ `npm test` (Vitest) $\rightarrow$ `npm run build`.
 2. `frontend`: Node 20 setup $\rightarrow$ `npm ci` $\rightarrow$ `npm run typecheck` $\rightarrow$ `npm run lint` $\rightarrow$ `npm run build`.
-3. `e2e`: Installs Playwright Chromium browsers and runs end-to-end verification against the production deployment.
+3. `e2e`: Installs Playwright Chromium browsers and runs end-to-end verification. **This job is gated to `refs/heads/main` only** — it does not execute on pull request or feature branch pushes. The CI environment targets `gamora-saas-platform.vercel.app` (Vercel preview deployment). Note: the `NEXT_PUBLIC_API_URL` variable in the CI workflow points to `gumora-platform-backend.onrender.com`; if that Render instance is suspended, the backend health probe test will be skipped silently by the current spec.
 
 ---
 
