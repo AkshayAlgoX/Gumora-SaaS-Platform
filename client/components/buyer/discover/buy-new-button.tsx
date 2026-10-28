@@ -145,7 +145,9 @@ function BuyNewButton({ productId }: { productId: string }) {
           { validateStatus: () => true }
         );
 
-        if (confirmResp.data.ok) router.push("/library");
+        // A retryable outcome (e.g. payment still processing) is not a
+        // cancellation: the library page confirms the pending order again.
+        if (confirmResp.data.ok || confirmResp.data.retryable) router.push("/library");
         else router.push("/checkout/cancel");
       };
 
