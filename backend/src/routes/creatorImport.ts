@@ -222,8 +222,10 @@ creatorImportRouter.post(
 
           created.push(doc);
           orderIndex++;
-        } catch (e: any) {
-          failed.push({ url, reason: e?.message || "failed" });
+        } catch {
+          // One reason for every failure: distinct messages (blocked, HTTP
+          // status, not an image) would let callers probe internal hosts.
+          failed.push({ url, reason: "Image could not be imported" });
         }
       }
 
