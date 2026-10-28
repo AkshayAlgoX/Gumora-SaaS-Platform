@@ -4,11 +4,13 @@ import { requireAuth, AuthedRequest } from "../middleware/requireAuth";
 import { Product } from "../models/Product";
 import { Order } from "../models/Order";
 import { cashfree } from "../lib/cashfree";
+import { settleOrderPayment } from "../services/settlement";
 
 export const checkoutRouter = Router();
 
 const CreateSessionSchema = z.object({
   productId: z.string().min(1),
+  customerPhone: z.string().regex(/^\d{10}$/, "Customer phone must be a 10-digit number").optional(),
 });
 
 const ConfirmSchema = z.object({
@@ -21,29 +23,25 @@ checkoutRouter.post("/confirm-public", async (req: Request, res: Response) => {
   try {
     const { orderId } = ConfirmSchema.parse(req.body);
 
-    const order = await Order.findById(orderId);
-    if (!order) return res.status(400).json({ ok: false });
+    const result = await settleOrderPayment({ orderId });
 
-    const resp = await cashfree.get(`/orders/${order.providerOrderId}`);
-
-    if (resp.data.order_status !== "PAID") {
-      return res.status(400).json({ ok: false });
+    if (!result.ok) {
+      return res.status(400).json({
+        ok: false,
+        code: result.code,
+        message: result.message,
+      });
     }
 
-    await Order.updateOne(
-      { _id: order._id },
-      { $set: { status: "paid", paidAt: new Date() } }
-    );
-
-    await Product.updateOne(
-      { _id: order.productId },
-      { $inc: { "stats.soldCount": 1 } }
-    );
-
-    return res.json({ ok: true });
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ ok: false });
+    return res.json({
+      ok: true,
+      status: result.status,
+      alreadySettled: result.status === "already_settled",
+      orderId: result.orderId,
+    });
+  } catch (e: any) {
+    console.error("CONFIRM-PUBLIC ERROR:", e);
+    return res.status(500).json({ ok: false, error: e.message || "Internal server error" });
   }
 });
 
@@ -55,7 +53,7 @@ checkoutRouter.use(requireAuth);
 
 checkoutRouter.post("/create-session", async (req: AuthedRequest, res) => {
   try {
-    const { productId } = CreateSessionSchema.parse(req.body);
+    const { productId, customerPhone } = CreateSessionSchema.parse(req.body);
 
     const product = await Product.findById(productId).lean();
     if (!product) return res.status(404).json({ ok: false });
@@ -80,7 +78,7 @@ checkoutRouter.post("/create-session", async (req: AuthedRequest, res) => {
         customer_id: req.user!.id,
         customer_name: req.user!.name || "Customer",
         customer_email: req.user!.email,
-        customer_phone: "9999999999",
+        customer_phone: customerPhone || "9999999999",
       },
       order_meta: {
         return_url: `${process.env.WEB_BASE_URL}/library?db_order_id=${dbOrder._id}`,
@@ -105,36 +103,31 @@ checkoutRouter.post("/create-session", async (req: AuthedRequest, res) => {
 
 /* ================= CONFIRM ================= */
 
-checkoutRouter.post("/confirm", async (req: AuthedRequest, res) => {
+checkoutRouter.post("/confirm", async (req: AuthedRequest, res: Response) => {
   try {
     const { orderId } = ConfirmSchema.parse(req.body);
 
-    const order = await Order.findOne({
-      _id: orderId,
+    const result = await settleOrderPayment({
+      orderId,
       buyerId: req.user!.id,
     });
 
-    if (!order) return res.status(400).json({ ok: false });
-
-    const resp = await cashfree.get(`/orders/${order.providerOrderId}`);
-
-    if (resp.data.order_status !== "PAID") {
-      return res.status(400).json({ ok: false });
+    if (!result.ok) {
+      return res.status(400).json({
+        ok: false,
+        code: result.code,
+        message: result.message,
+      });
     }
 
-    await Order.updateOne(
-      { _id: order._id },
-      { $set: { status: "paid", paidAt: new Date() } }
-    );
-
-    await Product.updateOne(
-      { _id: order.productId },
-      { $inc: { "stats.soldCount": 1 } }
-    );
-
-    return res.json({ ok: true });
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ ok: false });
+    return res.json({
+      ok: true,
+      status: result.status,
+      alreadySettled: result.status === "already_settled",
+      orderId: result.orderId,
+    });
+  } catch (e: any) {
+    console.error("CONFIRM ERROR:", e);
+    return res.status(500).json({ ok: false, error: e.message || "Internal server error" });
   }
 });
