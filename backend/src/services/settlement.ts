@@ -1,370 +1,237 @@
-import mongoose, { Types } from "mongoose";
-import { Order, OrderDoc } from "../models/Order";
+import mongoose, { ClientSession, Types } from "mongoose";
+import { Order } from "../models/Order";
 import { Product } from "../models/Product";
-import { cashfree as defaultCashfree } from "../lib/cashfree";
+import { CashfreeOrderSchema, PaymentGateway, cashfreeGateway } from "../lib/cashfreeOrders";
+import { SUPPORTED_CURRENCY, tryToMinorUnits } from "../lib/money";
 
-export interface SettleOrderParams {
-  orderId: string;
-  buyerId?: string;
-  cashfreeClient?: {
-    get: (url: string) => Promise<{ data: any }>;
-  };
-}
+/**
+ * Payment settlement for Cashfree orders.
+ *
+ * Invariant: an order moves from "pending" to "paid" and its product's
+ * stats.soldCount is incremented by exactly one in the SAME MongoDB
+ * transaction, or neither happens. The pending -> paid filter makes every
+ * retry, duplicate callback and concurrent request idempotent: only one
+ * transaction can match a pending order, and a write conflict between two
+ * concurrent transactions aborts one of them, whose retry then sees "paid".
+ *
+ * Settlement refuses to run (TRANSACTIONS_UNSUPPORTED) when the connected
+ * deployment cannot run multi-document transactions. There is deliberately
+ * no non-transactional fallback: a conditional update followed by a separate
+ * counter update cannot guarantee the invariant across crashes.
+ */
 
-export type SettlementStatusCode =
-  | "SETTLED_SUCCESS"
+export type SettlementCode =
+  | "SETTLED"
   | "ALREADY_SETTLED"
   | "INVALID_ORDER_ID"
   | "ORDER_NOT_FOUND"
-  | "ORDER_PREVIOUSLY_FAILED"
+  | "ORDER_FAILED"
   | "INVALID_ORDER_STATE"
-  | "GATEWAY_ERROR"
+  | "INVALID_ORDER_AMOUNT"
+  | "GATEWAY_UNAVAILABLE"
+  | "GATEWAY_RESPONSE_INVALID"
   | "PAYMENT_NOT_PAID"
   | "PROVIDER_ORDER_MISMATCH"
   | "AMOUNT_MISMATCH"
   | "CURRENCY_MISMATCH"
-  | "SETTLEMENT_TRANSACTION_FAILED";
+  | "PRODUCT_NOT_FOUND"
+  | "TRANSACTIONS_UNSUPPORTED"
+  | "OUTCOME_UNKNOWN"
+  | "SETTLEMENT_FAILED";
 
 export interface SettlementResult {
+  /** True only when the order is durably paid (now or previously). */
   ok: boolean;
-  status: "paid" | "already_settled" | "failed" | "rejected" | "error";
-  code: SettlementStatusCode;
-  message: string;
+  code: SettlementCode;
+  /** True only for the single call whose transaction committed the change. */
+  settledNow: boolean;
   orderId?: string;
-  order?: OrderDoc | null;
-  soldCountIncremented: boolean;
+  /** Internal diagnostic detail for logs; never returned to clients. */
+  detail?: string;
+}
+
+export interface SettleOrderParams {
+  orderId: string;
+  /** When given, the order must belong to this buyer. */
+  buyerId?: string;
+  gateway?: PaymentGateway;
+  connection?: mongoose.Connection;
+}
+
+const TRANSACTION_OPTIONS = {
+  readConcern: { level: "snapshot" as const },
+  writeConcern: { w: "majority" as const },
+};
+
+/* ---------------- transaction capability ---------------- */
+
+const transactionCapable = new WeakSet<mongoose.Connection>();
+
+/**
+ * Ask the server whether it is a replica-set member or a mongos router with
+ * logical sessions. Connection readyState alone says nothing about transaction
+ * support: a standalone mongod is "connected" but rejects transactions.
+ * Positive answers are cached per connection; negative answers are re-checked.
+ */
+export async function supportsTransactions(
+  connection: mongoose.Connection = mongoose.connection
+): Promise<boolean> {
+  if (transactionCapable.has(connection)) return true;
+  if (connection.readyState !== 1 || !connection.db) return false;
+  const hello = await connection.db.admin().command({ hello: 1 });
+  const topologyOk = typeof hello.setName === "string" || hello.msg === "isdbgrid";
+  const sessionsOk = hello.logicalSessionTimeoutMinutes != null;
+  const capable = topologyOk && sessionsOk;
+  if (capable) transactionCapable.add(connection);
+  return capable;
+}
+
+/* ---------------- settlement ---------------- */
+
+export async function settleOrderPayment(params: SettleOrderParams): Promise<SettlementResult> {
+  const { orderId, buyerId, gateway = cashfreeGateway, connection = mongoose.connection } = params;
+
+  if (!isObjectIdString(orderId) || (buyerId !== undefined && !isObjectIdString(buyerId))) {
+    return { ok: false, code: "INVALID_ORDER_ID", settledNow: false };
+  }
+
+  const filter: Record<string, Types.ObjectId> = { _id: new Types.ObjectId(orderId) };
+  if (buyerId !== undefined) filter.buyerId = new Types.ObjectId(buyerId);
+
+  const order = await Order.findOne(filter).lean();
+  if (!order) return { ok: false, code: "ORDER_NOT_FOUND", settledNow: false };
+
+  const id = order._id.toString();
+  if (order.status === "paid") return { ok: true, code: "ALREADY_SETTLED", settledNow: false, orderId: id };
+  if (order.status === "failed") return { ok: false, code: "ORDER_FAILED", settledNow: false, orderId: id };
+  if (order.status !== "pending") return { ok: false, code: "INVALID_ORDER_STATE", settledNow: false, orderId: id };
+
+  const expectedMinor = tryToMinorUnits(order.amount);
+  if (expectedMinor === null || order.currency !== SUPPORTED_CURRENCY) {
+    return { ok: false, code: "INVALID_ORDER_AMOUNT", settledNow: false, orderId: id, detail: `stored amount=${order.amount} currency=${order.currency}` };
+  }
+
+  // Refuse before calling the gateway so an unsafe deployment is visible immediately.
+  if (!(await supportsTransactions(connection))) {
+    return { ok: false, code: "TRANSACTIONS_UNSUPPORTED", settledNow: false, orderId: id };
+  }
+
+  /* -- verify with the payment provider -- */
+  let raw: unknown;
+  try {
+    raw = await gateway.getOrder(order.providerOrderId);
+  } catch (err) {
+    return { ok: false, code: "GATEWAY_UNAVAILABLE", settledNow: false, orderId: id, detail: errorText(err) };
+  }
+
+  const parsed = CashfreeOrderSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, code: "GATEWAY_RESPONSE_INVALID", settledNow: false, orderId: id, detail: parsed.error.message };
+  }
+  const provider = parsed.data;
+
+  if (provider.order_id !== order.providerOrderId) {
+    return { ok: false, code: "PROVIDER_ORDER_MISMATCH", settledNow: false, orderId: id, detail: `provider order_id=${provider.order_id}` };
+  }
+  if (provider.order_status !== "PAID") {
+    return { ok: false, code: "PAYMENT_NOT_PAID", settledNow: false, orderId: id, detail: `provider status=${provider.order_status}` };
+  }
+  if (provider.order_currency !== SUPPORTED_CURRENCY) {
+    return { ok: false, code: "CURRENCY_MISMATCH", settledNow: false, orderId: id, detail: `provider currency=${provider.order_currency}` };
+  }
+  const providerMinor = tryToMinorUnits(provider.order_amount);
+  if (providerMinor === null || providerMinor !== expectedMinor) {
+    return { ok: false, code: "AMOUNT_MISMATCH", settledNow: false, orderId: id, detail: `provider amount=${provider.order_amount} expected minor=${expectedMinor}` };
+  }
+
+  /* -- commit the state change and the counter together -- */
+  const session = await connection.startSession();
+  try {
+    let outcome: SettlementResult | undefined;
+    await session.withTransaction(async () => {
+      // withTransaction may re-run this callback after a transient error, so
+      // the outcome is recomputed from scratch on every attempt.
+      outcome = await applySettlement(session, order._id, order.productId, id);
+    }, TRANSACTION_OPTIONS);
+    // The callback either assigned an outcome or threw, which skips this line.
+    return outcome!;
+  } catch (err) {
+    if (err instanceof ProductMissingError) {
+      return { ok: false, code: "PRODUCT_NOT_FOUND", settledNow: false, orderId: id };
+    }
+    if (hasErrorLabel(err, "UnknownTransactionCommitResult")) {
+      return resolveUnknownCommit(order._id, id, err);
+    }
+    return { ok: false, code: "SETTLEMENT_FAILED", settledNow: false, orderId: id, detail: errorText(err) };
+  } finally {
+    await session.endSession();
+  }
+}
+
+class ProductMissingError extends Error {}
+
+async function applySettlement(
+  session: ClientSession,
+  orderObjectId: Types.ObjectId,
+  productId: Types.ObjectId,
+  id: string
+): Promise<SettlementResult> {
+  const transitioned = await Order.findOneAndUpdate(
+    { _id: orderObjectId, status: "pending" },
+    { $set: { status: "paid", paidAt: new Date() } },
+    { new: true, session }
+  ).lean();
+
+  if (!transitioned) {
+    // Another transaction committed first; report the state it left behind.
+    const current = await Order.findById(orderObjectId, { status: 1 }, { session }).lean();
+    if (current?.status === "paid") return { ok: true, code: "ALREADY_SETTLED", settledNow: false, orderId: id };
+    return { ok: false, code: "INVALID_ORDER_STATE", settledNow: false, orderId: id, detail: `status=${current?.status ?? "missing"}` };
+  }
+
+  const counter = await Product.updateOne(
+    { _id: productId },
+    { $inc: { "stats.soldCount": 1 } },
+    { session }
+  );
+  if (!counter.acknowledged || counter.matchedCount !== 1 || counter.modifiedCount !== 1) {
+    // Throwing aborts the transaction, so the order stays pending.
+    throw new ProductMissingError();
+  }
+
+  return { ok: true, code: "SETTLED", settledNow: true, orderId: id };
 }
 
 /**
- * Robust, idempotent payment settlement engine.
- *
- * Guarantees:
- * 1. Conditional state transition: only transitions orders from 'pending' to 'paid'.
- * 2. Idempotency: repeated or concurrent calls return 'already_settled' with no secondary increment.
- * 3. Exact-once stats: Product.stats.soldCount increments exactly once per settled order.
- * 4. Gateway reconciliation: verifies provider status, order identity, amount, and currency.
- * 5. Atomicity & rollback: uses MongoDB transaction when available, with compensating rollback in standalone mode.
+ * The driver retries commitTransaction for UnknownTransactionCommitResult
+ * before giving up. If it still cannot tell, read the order back with majority
+ * read concern: "paid" means our commit (or a concurrent one) was applied.
  */
-export async function settleOrderPayment(params: SettleOrderParams): Promise<SettlementResult> {
-  const { orderId, buyerId, cashfreeClient = defaultCashfree } = params;
-
-  // 1. Validate ObjectId format
-  if (!orderId || !mongoose.Types.ObjectId.isValid(orderId)) {
-    return {
-      ok: false,
-      status: "rejected",
-      code: "INVALID_ORDER_ID",
-      message: "Provided orderId is not a valid MongoDB ObjectId",
-      soldCountIncremented: false,
-    };
-  }
-
-  if (buyerId && !mongoose.Types.ObjectId.isValid(buyerId)) {
-    return {
-      ok: false,
-      status: "rejected",
-      code: "INVALID_ORDER_ID",
-      message: "Provided buyerId is not a valid MongoDB ObjectId",
-      soldCountIncremented: false,
-    };
-  }
-
-  // 2. Locate order with ownership check when buyerId is supplied
-  const query: Record<string, any> = { _id: new Types.ObjectId(orderId) };
-  if (buyerId) {
-    query.buyerId = new Types.ObjectId(buyerId);
-  }
-
-  const order = await Order.findOne(query);
-  if (!order) {
-    return {
-      ok: false,
-      status: "rejected",
-      code: "ORDER_NOT_FOUND",
-      message: buyerId
-        ? "Order not found or does not belong to the authenticated user"
-        : "Order not found",
-      soldCountIncremented: false,
-    };
-  }
-
-  // 3. Check current state for early idempotency return
-  if (order.status === "paid") {
-    return {
-      ok: true,
-      status: "already_settled",
-      code: "ALREADY_SETTLED",
-      message: "Order has already been confirmed as paid",
-      orderId: order._id.toString(),
-      order,
-      soldCountIncremented: false,
-    };
-  }
-
-  if (order.status === "failed") {
-    return {
-      ok: false,
-      status: "failed",
-      code: "ORDER_PREVIOUSLY_FAILED",
-      message: "Order has previously been marked as failed",
-      orderId: order._id.toString(),
-      order,
-      soldCountIncremented: false,
-    };
-  }
-
-  if (order.status !== "pending") {
-    return {
-      ok: false,
-      status: "rejected",
-      code: "INVALID_ORDER_STATE",
-      message: `Order cannot be confirmed from status '${order.status}'`,
-      orderId: order._id.toString(),
-      order,
-      soldCountIncremented: false,
-    };
-  }
-
-  // 4. Verify with payment provider (Cashfree)
-  let cfResponse: { data: any };
+export async function resolveUnknownCommit(
+  orderObjectId: Types.ObjectId,
+  id: string,
+  err: unknown
+): Promise<SettlementResult> {
   try {
-    cfResponse = await cashfreeClient.get(`/orders/${order.providerOrderId}`);
-  } catch (err: any) {
-    return {
-      ok: false,
-      status: "error",
-      code: "GATEWAY_ERROR",
-      message: err.response?.data?.message || err.message || "Failed to reach payment gateway",
-      orderId: order._id.toString(),
-      soldCountIncremented: false,
-    };
-  }
-
-  const cfData = cfResponse.data;
-
-  // 5. Authoritative provider checks
-  // 5a. Payment status
-  if (cfData.order_status !== "PAID") {
-    return {
-      ok: false,
-      status: "rejected",
-      code: "PAYMENT_NOT_PAID",
-      message: `Gateway order status is '${cfData.order_status}', expected 'PAID'`,
-      orderId: order._id.toString(),
-      soldCountIncremented: false,
-    };
-  }
-
-  // 5b. Order identity
-  if (cfData.order_id && cfData.order_id !== order.providerOrderId) {
-    return {
-      ok: false,
-      status: "rejected",
-      code: "PROVIDER_ORDER_MISMATCH",
-      message: `Gateway order_id '${cfData.order_id}' does not match expected '${order.providerOrderId}'`,
-      orderId: order._id.toString(),
-      soldCountIncremented: false,
-    };
-  }
-
-  // 5c. Currency verification
-  if (cfData.order_currency && cfData.order_currency.toUpperCase() !== order.currency.toUpperCase()) {
-    return {
-      ok: false,
-      status: "rejected",
-      code: "CURRENCY_MISMATCH",
-      message: `Gateway currency '${cfData.order_currency}' does not match order currency '${order.currency}'`,
-      orderId: order._id.toString(),
-      soldCountIncremented: false,
-    };
-  }
-
-  // 5d. Amount verification (floating-point tolerance of 0.01)
-  if (cfData.order_amount !== undefined && cfData.order_amount !== null) {
-    const gatewayAmount = Number(cfData.order_amount);
-    const orderAmount = Number(order.amount);
-    if (Math.abs(gatewayAmount - orderAmount) > 0.01) {
-      return {
-        ok: false,
-        status: "rejected",
-        code: "AMOUNT_MISMATCH",
-        message: `Gateway amount ${gatewayAmount} does not match expected order amount ${orderAmount}`,
-        orderId: order._id.toString(),
-        soldCountIncremented: false,
-      };
+    const current = await Order.findById(orderObjectId, { status: 1 }).readConcern("majority").lean();
+    if (current?.status === "paid") {
+      return { ok: true, code: "ALREADY_SETTLED", settledNow: false, orderId: id, detail: "resolved after unknown commit result" };
     }
+  } catch {
+    // Fall through: the outcome is still unknown.
   }
+  return { ok: false, code: "OUTCOME_UNKNOWN", settledNow: false, orderId: id, detail: errorText(err) };
+}
 
-  // Extract optional provider payment ID if present in gateway response
-  const providerPaymentId =
-    cfData.cf_payment_id?.toString() ||
-    cfData.payment_id?.toString() ||
-    (Array.isArray(cfData.payments) && cfData.payments[0]?.payment_id?.toString()) ||
-    undefined;
+function isObjectIdString(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-fA-F]{24}$/.test(value);
+}
 
-  // 6. Execute atomic settlement transition
-  const now = new Date();
-  const updatePayload: Record<string, any> = {
-    status: "paid",
-    paidAt: now,
-  };
-  if (providerPaymentId) {
-    updatePayload.providerPaymentId = providerPaymentId;
-  }
+function hasErrorLabel(err: unknown, label: string): boolean {
+  const candidate = err as { hasErrorLabel?: (l: string) => boolean } | null;
+  return typeof candidate?.hasErrorLabel === "function" && candidate.hasErrorLabel(label);
+}
 
-  let session: mongoose.ClientSession | null = null;
-  let inTransaction = false;
-
-  // Only attempt to start a session/transaction if mongoose is actively connected (readyState === 1)
-  if (mongoose.connection && mongoose.connection.readyState === 1) {
-    try {
-      session = await mongoose.startSession();
-      try {
-        session.startTransaction();
-        inTransaction = true;
-      } catch {
-        // Standalone MongoDB instances do not support transactions; fall back to atomic findOneAndUpdate
-        inTransaction = false;
-      }
-    } catch {
-      session = null;
-    }
-  }
-
-  try {
-    if (inTransaction && session) {
-      // Transaction path (MongoDB Atlas / Replica Set)
-      const transitionedOrder = await Order.findOneAndUpdate(
-        { _id: order._id, status: "pending" },
-        { $set: updatePayload },
-        { new: true, session }
-      );
-
-      if (!transitionedOrder) {
-        // Race condition: another request transitioned the order between our read and this write
-        await session.abortTransaction();
-        const fresh = await Order.findById(order._id);
-        if (fresh?.status === "paid") {
-          return {
-            ok: true,
-            status: "already_settled",
-            code: "ALREADY_SETTLED",
-            message: "Order was confirmed concurrently by another request",
-            orderId: order._id.toString(),
-            order: fresh,
-            soldCountIncremented: false,
-          };
-        }
-        return {
-          ok: false,
-          status: "rejected",
-          code: "INVALID_ORDER_STATE",
-          message: `Order state was modified concurrently to '${fresh?.status}'`,
-          orderId: order._id.toString(),
-          soldCountIncremented: false,
-        };
-      }
-
-      // Increment product sales count in same transaction
-      await Product.updateOne(
-        { _id: order.productId },
-        { $inc: { "stats.soldCount": 1 } },
-        { session }
-      );
-
-      await session.commitTransaction();
-
-      return {
-        ok: true,
-        status: "paid",
-        code: "SETTLED_SUCCESS",
-        message: "Order payment successfully settled and recorded",
-        orderId: transitionedOrder._id.toString(),
-        order: transitionedOrder,
-        soldCountIncremented: true,
-      };
-    } else {
-      // Non-transactional fallback (Standalone MongoDB / in-memory unit tests)
-      // The conditional query `{ _id, status: 'pending' }` guarantees atomicity of the gate
-      const transitionedOrder = await Order.findOneAndUpdate(
-        { _id: order._id, status: "pending" },
-        { $set: updatePayload },
-        { new: true }
-      );
-
-      if (!transitionedOrder) {
-        // Already transitioned by a concurrent process
-        const fresh = await Order.findById(order._id);
-        if (fresh?.status === "paid") {
-          return {
-            ok: true,
-            status: "already_settled",
-            code: "ALREADY_SETTLED",
-            message: "Order was confirmed concurrently by another request",
-            orderId: order._id.toString(),
-            order: fresh,
-            soldCountIncremented: false,
-          };
-        }
-        return {
-          ok: false,
-          status: "rejected",
-          code: "INVALID_ORDER_STATE",
-          message: `Order state was modified concurrently to '${fresh?.status}'`,
-          orderId: order._id.toString(),
-          soldCountIncremented: false,
-        };
-      }
-
-      // Transition succeeded — now update product sales counter
-      try {
-        await Product.updateOne(
-          { _id: order.productId },
-          { $inc: { "stats.soldCount": 1 } }
-        );
-      } catch (productErr) {
-        // Compensating rollback: if counter fails to update, revert order status back to pending
-        // so that subsequent retries can complete cleanly without permanent desynchronization
-        await Order.updateOne(
-          { _id: order._id, status: "paid" },
-          { $set: { status: "pending", paidAt: null } }
-        );
-        throw productErr;
-      }
-
-      return {
-        ok: true,
-        status: "paid",
-        code: "SETTLED_SUCCESS",
-        message: "Order payment successfully settled and recorded",
-        orderId: transitionedOrder._id.toString(),
-        order: transitionedOrder,
-        soldCountIncremented: true,
-      };
-    }
-  } catch (err: any) {
-    if (inTransaction && session) {
-      try {
-        await session.abortTransaction();
-      } catch {
-        // Ignore abort error
-      }
-    }
-    return {
-      ok: false,
-      status: "error",
-      code: "SETTLEMENT_TRANSACTION_FAILED",
-      message: err.message || "Database operation failed during settlement",
-      orderId: order._id.toString(),
-      soldCountIncremented: false,
-    };
-  } finally {
-    if (session) {
-      try {
-        await session.endSession();
-      } catch {
-        // Ignore session end error
-      }
-    }
-  }
+function errorText(err: unknown): string {
+  return err instanceof Error ? `${err.name}: ${err.message}` : String(err);
 }

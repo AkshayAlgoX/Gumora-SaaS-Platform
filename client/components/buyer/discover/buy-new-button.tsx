@@ -30,7 +30,15 @@ type CreateSessionRes = {
   };
 };
 
-type ConfirmRes = { ok: boolean; error?: string };
+type ConfirmRes = { ok: boolean; code?: string; retryable?: boolean };
+
+// Cashfree requires a 10-digit customer phone. It is collected from the buyer,
+// sent to the backend for validation, forwarded to Cashfree and not stored.
+const INDIAN_MOBILE = /^(?:\+91|91|0)?[6-9]\d{9}$/;
+
+function normalisePhone(value: string): string {
+  return value.replace(/[\s-]/g, "");
+}
 
 function waitForCashfree(timeout = 3000): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -52,10 +60,19 @@ function waitForCashfree(timeout = 3000): Promise<void> {
 
 function BuyNewButton({ productId }: { productId: string }) {
   const [loading, setLoading] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const router = useRouter();
 
   async function onBuy() {
     if (loading) return;
+
+    const customerPhone = normalisePhone(phone);
+    if (!INDIAN_MOBILE.test(customerPhone)) {
+      setPhoneError("Enter a valid 10-digit Indian mobile number");
+      return;
+    }
+    setPhoneError(null);
 
     console.log('Buy button clicked');
     setLoading(true);
@@ -64,7 +81,7 @@ function BuyNewButton({ productId }: { productId: string }) {
       console.log('Making API call to create session');
       const { data: res } = await apiClient.post<CreateSessionRes>(
         "/api/checkout/create-session",
-        { productId }
+        { productId, customerPhone }
       );
 
       console.log('API response:', res);
@@ -123,11 +140,9 @@ function BuyNewButton({ productId }: { productId: string }) {
       const handlePaymentSuccess = async () => {
         const confirmResp = await apiClient.post<ConfirmRes>(
           "/api/checkout/confirm",
-          {
-            orderId: res.order?.id ?? "",
-            orderToken: res.cashfree?.orderToken ?? "",
-            paymentSessionId: res.cashfree?.paymentSessionId ?? "",
-          }
+          { orderId: res.order?.id ?? "" },
+          // Non-2xx settlement outcomes carry a JSON body; inspect it instead of throwing.
+          { validateStatus: () => true }
         );
 
         if (confirmResp.data.ok) router.push("/library");
@@ -154,14 +169,36 @@ function BuyNewButton({ productId }: { productId: string }) {
   }
 
   return (
-    <button
-      type="button"
-      onClick={onBuy}
-      disabled={loading}
-      className="w-full rounded-none border px-4 py-4 bg-[#ff90e8] cursor-pointer text-sm disabled:opacity-65 font-medium"
-    >
-      {loading ? "Starting payment..." : "Buy Now"}
-    </button>
+    <div className="flex w-full flex-col gap-2">
+      <label htmlFor={`buyer-phone-${productId}`} className="text-sm font-medium">
+        Mobile number (required by the payment gateway)
+      </label>
+      <input
+        id={`buyer-phone-${productId}`}
+        type="tel"
+        inputMode="tel"
+        autoComplete="tel"
+        value={phone}
+        onChange={(e) => setPhone(e.target.value)}
+        aria-invalid={phoneError ? true : undefined}
+        aria-describedby={phoneError ? `buyer-phone-error-${productId}` : undefined}
+        placeholder="10-digit mobile number"
+        className="w-full rounded-none border px-3 py-3 text-sm"
+      />
+      {phoneError && (
+        <p id={`buyer-phone-error-${productId}`} role="alert" className="text-sm text-red-600">
+          {phoneError}
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={onBuy}
+        disabled={loading}
+        className="w-full rounded-none border px-4 py-4 bg-[#ff90e8] cursor-pointer text-sm disabled:opacity-65 font-medium"
+      >
+        {loading ? "Starting payment..." : "Buy Now"}
+      </button>
+    </div>
   );
 }
 
