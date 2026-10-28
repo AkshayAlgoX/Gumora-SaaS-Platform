@@ -5,11 +5,10 @@
 [![Next.js](https://img.shields.io/badge/Next.js-16.1_App_Router-black?logo=next.js&logoColor=white)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![Express](https://img.shields.io/badge/Express-4.22-000000?logo=express&logoColor=white)](https://expressjs.com/)
-[![MongoDB](https://img.shields.io/badge/MongoDB-Atlas_Mongoose_9-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose_9-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com/)
 [![Redis](https://img.shields.io/badge/Redis-Upstash_Serverless-DC382D?logo=redis&logoColor=white)](https://upstash.com/)
 [![Cashfree](https://img.shields.io/badge/Payments-Cashfree_PG-0066FF)](https://www.cashfree.com/)
 [![Cloudinary](https://img.shields.io/badge/Storage-Cloudinary_CDN-3448C5?logo=cloudinary&logoColor=white)](https://cloudinary.com/)
-[![Tests](https://img.shields.io/badge/Testing-Vitest_+_Playwright-success?logo=vitest&logoColor=white)](backend/tests/)
 
 > **A full-stack creator commerce marketplace built to demonstrate decoupled cross-origin session authentication, server-authoritative payment reconciliation, structured AI content extraction, and multi-tier caching.**
 
@@ -19,24 +18,24 @@
 
 Gumora is a digital products commerce platform inspired by Gumroad. It provides independent creators with tools to list digital downloads, automate content ingestion from external URLs, and monitor real-time sales telemetry, while providing buyers with a friction-free discovery catalog, Cashfree payment checkout, and an authenticated digital asset library.
 
-The platform is designed around a decoupled dual-host architecture: a Next.js 16 App Router frontend paired with an Express/TypeScript REST backend. The system enforces zero-trust payment verification (never relying on client-side status flags), cross-origin HTTP-only cookie sessions, cursor-based Redis cache invalidation, and automated media inspection via Sharp before CDN upload.
+The platform is designed around a decoupled dual-host architecture: a Next.js 16 App Router frontend paired with an Express/TypeScript REST backend. The system verifies every payment with Cashfree on the server (never relying on client-side status flags), uses cross-origin HTTP-only cookie sessions (see the session caveat under [Known Limitations](#known-limitations)), cursor-based Redis cache invalidation, and automated media inspection via Sharp before CDN upload.
 
 ### Core Engineering Highlights
 
-1. **Server-Authoritative Payment Settlement**: The payment verification boundary ([`backend/src/routes/checkout.ts`](backend/src/routes/checkout.ts)) strictly isolates payment confirmation from client input. Orders transition from `pending` to `paid` only after the backend polls Cashfree's authoritative REST gateway (`/orders/${providerOrderId}`) and validates `order_status === "PAID"`.
+1. **Transactional Payment Settlement**: [`backend/src/services/settlement.ts`](backend/src/services/settlement.ts) fetches the order from Cashfree, requires `order_id`, `order_status === "PAID"`, `INR` and an exact paise-level amount match, and then moves the order `pending → paid` and increments `stats.soldCount` in one MongoDB transaction. Retries, duplicate callbacks and concurrent confirmations settle once. Design, outcome codes and limitations: [`docs/payment-settlement.md`](docs/payment-settlement.md).
 2. **Cross-Origin Session Security**: Configured for independent cross-domain deployment (Vercel frontend $\longleftrightarrow$ Render backend) using signed JWT cookies with `SameSite=None; Secure; HttpOnly`, fortified with Helmet security headers, CORS origin whitelisting, and tiered rate limiting.
 3. **Multi-Tier Redis Caching**: Integrates Upstash Redis ([`backend/src/lib/cache.ts`](backend/src/lib/cache.ts)) with structured key namespaces for product listings (60s TTL), slug-based lookups (300s TTL), and user libraries (60s TTL). Utilizes non-blocking cursor-based `SCAN` pattern purging to ensure cache consistency without blocking the event loop.
 4. **Firecrawl Ingestion & Media Pipeline**: Creators can import products by URL ([`backend/src/routes/creatorImport.ts`](backend/src/routes/creatorImport.ts)). Firecrawl extracts product descriptions constrained to strict JSON schemas, while candidate assets undergo Sharp-based dimension and MIME validation before Cloudinary CDN ingestion.
-5. **Full-Spectrum Testing & CI/CD**: Backed by a multi-stage GitHub Actions pipeline executing TypeScript compilation (`tsc --noEmit`), Vitest unit/middleware tests, and Playwright Chromium end-to-end tests. The E2E job runs on `main` branch pushes only, targeting a Vercel preview deployment.
+5. **Testing & CI**: GitHub Actions runs type checks, lint, builds, Vitest suites (including settlement tests against a real MongoDB replica set) and a mock-isolated Playwright suite on every push and pull request. No CI job contacts a deployed service.
 
 ---
 
 ## Deployment Status
 
 > [!NOTE]
-> **Current Deployment State (October 2026):**
-> * **Frontend Client**: Deployed on Vercel at [**https://www.gumora.shop**](https://www.gumora.shop) (accessible).
-> * **Backend API Service**: Configured on Render at `https://api.gumora.shop` (custom domain). The backend is hosted on Render's free tier and enters an automated suspended state after periods of inactivity. At the time of documentation, the backend endpoint returns HTTP 503 (`x-render-routing: suspend`) and is not actively serving requests.
+> **Deployment state, checked 2026-10-28 19:25 UTC:**
+> * **Frontend Client**: Deployed on Vercel at [**https://www.gumora.shop**](https://www.gumora.shop) (HTTP 200; `gumora.shop` redirects there).
+> * **Backend API Service**: `https://api.gumora.shop` (Render, custom domain) returns HTTP 503 with Render's "Service Suspended" page (`x-render-routing: suspend`). Sign-in, catalog, checkout and library do not work on the public site while the API is suspended. There is no live demo.
 > * **Local Evaluation**: For a fully functional evaluation with backend and database, follow the [Local Development Setup](#local-development-setup) instructions below.
 
 ---
@@ -117,7 +116,7 @@ Payment fraud frequently arises from client-side state manipulation (e.g. spoofi
 [Buyer Client]          [Gumora Backend]             [Cashfree Gateway]           [MongoDB]
       │                        │                             │                        │
       ├── POST /create-session ┼────────────────────────────►│                        │
-      │   (productId)          │ Create Order (Pending)      │                        ├─► Order (pending)
+      │ (productId, phone)     │ Create Order (Pending)      │                        ├─► Order (pending)
       │                        │────────────────────────────►│ POST /orders           │
       │                        │◄────────────────────────────┤ (payment_session_id)   │
       │◄── payment_session_id ─┤                             │                        │
@@ -129,14 +128,15 @@ Payment fraud frequently arises from client-side state manipulation (e.g. spoofi
       │                        │────────────────────────────►│                        │
       │                        │◄────────────────────────────┤ order_status: "PAID"   │
       │                        │                             │                        │
-      │                        │ Sequential DB Writes ───────┼───────────────────────►├─► Order (paid)
-      │                        │ (status="paid", paidAt=now) │                        ├─► Product (soldCount +1)
+      │                        │ One MongoDB transaction ────┼───────────────────────►├─► Order (pending→paid)
+      │                        │ (or nothing is written)     │                        ├─► Product (soldCount +1)
       │◄── 200 OK (Purchased) ─┤                             │                        │
 ```
 
-1. **Session Creation**: The client requests a checkout session for a valid `productId`. The backend persists an order with `status: "pending"` and dispatches an authenticated request to Cashfree (`/orders`), receiving a `payment_session_id`.
-2. **Authoritative Verification**: When the buyer returns to the application, `/api/checkout/confirm` queries Cashfree directly. Only if `resp.data.order_status === "PAID"` does the system update the order record and subsequently increment the creator's product sales counter (`stats.soldCount`) in a second database write.
-3. **Public Re-Check**: For unauthenticated redirect scenarios, `/api/checkout/confirm-public` validates the provider status without exposing user profile details.
+1. **Session Creation**: The buyer enters a mobile number (Cashfree requires `customer_phone`; it is validated, forwarded to Cashfree and not stored). The backend creates a `pending` order whose provider id is `gum_<orderId>` and requests a `payment_session_id` from Cashfree (`POST /orders`).
+2. **Verification and settlement**: When the buyer returns to `/library`, the page restores the session and calls `POST /api/checkout/confirm`. The backend fetches the order from Cashfree, rejects any missing or mismatched field, and commits the paid state and the sales counter in one transaction. The response carries an outcome code and a `retryable` flag.
+3. **Deployment requirement**: settlement needs a MongoDB replica set or sharded cluster (transactions). On a standalone server it refuses with `TRANSACTIONS_UNSUPPORTED` instead of writing partially.
+4. **Deprecated public endpoint**: `POST /api/checkout/confirm-public` runs the same settlement for older clients but always answers `202 { ok: true, accepted: true }`, so it reveals nothing about a guessed order id. It does not grant library access.
 
 ### 2. Cross-Origin Session Security ([`backend/src/middleware/requireAuth.ts`](backend/src/middleware/requireAuth.ts))
 
@@ -152,7 +152,7 @@ Because the frontend is deployed on Vercel (`gumora.shop`) and the API resides o
   });
   ```
 * **Ownership Boundary Enforcement**:
-  Every creator-facing mutation invokes `loadOwnProduct` or `ownProductOrSend`, checking that `String(product.creatorId) === req.user.id`. Requests attempting to alter another creator's product fail closed with `HTTP 403 Forbidden`.
+  Every creator-facing mutation invokes `loadOwnProduct` or `ownProductOrSend`, checking that `String(product.creatorId) === req.user.id`. Requests for another creator's product are refused (HTTP 400 from the product routes, HTTP 403 from the import routes).
 * **Security Headers & Rate Limiting**:
   - Helmet configured with `nosniff` and cross-origin resource policy.
   - Dedicated authentication rate limiter: 10 attempts per 15-minute window (`/api/auth/login`, `/api/auth/register`).
@@ -191,7 +191,7 @@ To prevent database bottlenecking on high-read public discovery routes, Gumora i
 Gumora enables creators to import products from external storefronts:
 
 1. **Firecrawl Scraping**: Dispatches external URLs to Firecrawl with schema constraints (`PRODUCT_DESC_SCHEMA`), extracting structured summaries and candidate image URLs.
-2. **Asset Validation (`downloadAndInspectImage`)**: Candidate image buffers are downloaded, verified for valid MIME types (PNG, JPEG, WebP), and inspected for dimension bounds using Sharp.
+2. **Asset Validation (`downloadAndInspectImage`)**: Selected image URLs are downloaded through `safeFetch` (public addresses only, redirects re-validated, 10 MB cap enforced while streaming), the content is sniffed with `file-type` and must be an `image/*` type, and Sharp reads its dimensions.
 3. **CDN Upload**: Validated image buffers are piped directly to Cloudinary under isolated product folder paths (`gumroad-ai-clone/products/{productId}`) and persisted as `ImageAsset` documents.
 
 ---
@@ -202,53 +202,60 @@ All routes are mounted under `/api` and enforce strict JSON payload validation:
 
 | Method | Endpoint | Description | Auth Required |
 | :--- | :--- | :--- | :--- |
-| `GET` | `/healthz` | System health check and uptime probe | Public |
-| `POST` | `/api/auth/register` | Register new user account | Public |
-| `POST` | `/api/auth/login` | Authenticate user and issue HTTP-only cookie | Public |
-| `GET` | `/api/auth/me` | Fetch authenticated user profile | Authenticated |
-| `POST` | `/api/auth/logout` | Clear session cookie | Authenticated |
-| `GET` | `/api/products` | Browse public product catalog (Redis cached) | Public |
-| `GET` | `/api/products/:slug` | Retrieve single product by URL slug | Public |
-| `GET` | `/api/creator/products` | List authenticated creator's products | Creator |
-| `POST` | `/api/creator/products` | Create a new draft product | Creator |
-| `PUT` | `/api/creator/products/:productId` | Update product metadata and pricing | Creator (Owner) |
-| `DELETE` | `/api/creator/products/:productId`| Delete product and purge cache | Creator (Owner) |
-| `POST` | `/api/creator/products/:productId/firecrawl/scrape` | Extract product metadata via Firecrawl | Creator (Owner) |
-| `POST` | `/api/creator/products/:productId/assets/ingest` | Inspect and upload validated assets | Creator (Owner) |
-| `GET` | `/api/creator/sales` | Aggregated sales telemetry and buyer list | Creator |
-| `POST` | `/api/checkout/create-session` | Initialize Cashfree payment session | Authenticated |
-| `POST` | `/api/checkout/confirm` | Authoritative server-side payment verification | Authenticated |
-| `POST` | `/api/checkout/confirm-public` | Public order status reconciliation | Public |
-| `GET` | `/api/library` | List buyer's purchased digital assets | Authenticated |
-| `GET` | `/api/library/:orderId/download` | Generate secure download redirect | Authenticated (Buyer) |
+| `GET` | `/healthz` | Health check (`OK`) | Public |
+| `POST` | `/api/auth/register` | Register a user account | Public |
+| `POST` | `/api/auth/login` | Authenticate and set the HTTP-only session cookie | Public |
+| `POST` | `/api/auth/logout` | Clear the session cookie | Public |
+| `GET` | `/api/auth/me` | Current user profile | Authenticated |
+| `GET` | `/api/auth/token` | Return the session JWT to the page (see [Known Limitations](#known-limitations)) | Authenticated |
+| `POST` | `/api/auth/refresh-session` | Re-set the session cookie from a JWT in the body | Public (JWT required) |
+| `GET` | `/api/products` | Published product catalog (Redis cached) | Public |
+| `GET` | `/api/products/:slug` | Single published product by slug | Public |
+| `GET` | `/api/creator/products` | List the creator's products | Authenticated |
+| `POST` | `/api/creator/products` | Create a draft product | Authenticated |
+| `GET` | `/api/creator/products/:productId` | Get one of the creator's products | Authenticated (owner) |
+| `PATCH` | `/api/creator/products/:productId` | Update product details and pricing | Authenticated (owner) |
+| `PATCH` | `/api/creator/products/:productId/cover` | Set the cover image | Authenticated (owner) |
+| `PATCH` | `/api/creator/products/:productId/publish` | Publish or unpublish | Authenticated (owner) |
+| `POST` | `/api/creator/products/:productId/firecrawl/search` | Search the web for product sources | Authenticated (owner) |
+| `POST` | `/api/creator/products/:productId/firecrawl/scrape` | Extract description and image candidates from a URL | Authenticated (owner) |
+| `GET` | `/api/creator/products/:productId/assets` | List product images | Authenticated (owner) |
+| `POST` | `/api/creator/products/:productId/assets/ingest` | Download, inspect and upload selected images | Authenticated (owner) |
+| `GET` | `/api/creator/sales` | Sales summary for the creator | Creator |
+| `POST` | `/api/checkout/create-session` | Create a pending order and Cashfree payment session | Authenticated |
+| `POST` | `/api/checkout/confirm` | Verify with Cashfree and settle the caller's order | Authenticated |
+| `POST` | `/api/checkout/confirm-public` | Deprecated settlement trigger; uniform `202` response | Public (rate limited) |
+| `GET` | `/api/library` | The buyer's paid products | Authenticated |
+| `GET` | `/api/library/:productId/assets` | Download URLs for a purchased product | Authenticated (buyer of that product) |
 
 ---
 
 ## Testing & Quality Assurance
 
-The codebase includes automated unit, integration, and end-to-end test suites:
+### 1. Backend (Vitest), `cd backend && npm test`
 
-### 1. Backend Unit & Middleware Tests (Vitest)
-Located in [`backend/tests/api.test.ts`](backend/tests/api.test.ts) and [`backend/tests/utils.test.ts`](backend/tests/utils.test.ts):
-* **Health & Route Introspection**: Verifies `/healthz` and root API info endpoints.
-* **Authentication Middleware**: Verifies `HTTP 401 Unauthorized` fail-closed behavior across `/api/library`, `/api/auth/me`, and `/api/creator/*` when unauthenticated.
-* **Request Validation**: Verifies Zod schema rejections on missing email, password, or invalid checkout parameters.
-* **Security Headers**: Asserts Helmet security headers (`X-Content-Type-Options: nosniff`).
-* **CORS Validation**: Asserts allowed origins receive credentials and headers while unauthorized origins are rejected.
-* **Slug Utilities**: Validates collision avoidance, unicode trimming, and incremental counter allocation (`slug`, `slug-2`).
+* [`tests/settlement.integration.test.ts`](backend/tests/settlement.integration.test.ts): settlement against a real single-node MongoDB replica set started by `mongodb-memory-server`. It covers idempotent repeats, 25 concurrent confirmations of one order (exactly one increment), ownership, every provider-verification failure, a deleted product, and server-side `failCommand` failpoints (write conflict, failed write, transient commit failure, dropped commit connection).
+* [`tests/settlement.standalone.test.ts`](backend/tests/settlement.standalone.test.ts): on a standalone `mongod`, settlement must refuse and write nothing.
+* [`tests/checkout.routes.test.ts`](backend/tests/checkout.routes.test.ts): checkout HTTP contracts with real JWT cookies; only the outbound Cashfree client is stubbed.
+* [`tests/safeFetch.test.ts`](backend/tests/safeFetch.test.ts): the image-import SSRF guard against a local HTTP server.
+* [`tests/money.test.ts`](backend/tests/money.test.ts), [`tests/api.test.ts`](backend/tests/api.test.ts), [`tests/utils.test.ts`](backend/tests/utils.test.ts): exact paise conversion, health and auth middleware, validation, Helmet and CORS headers, rate-limit headers, slug utilities.
 
-### 2. Frontend End-to-End Tests (Playwright)
-Located in [`client/e2e/basic.spec.ts`](client/e2e/basic.spec.ts):
-* **Homepage & Navigation**: Asserts brand title and responsive navigation links.
-* **Authentication Flows**: Validates form visibility and client-side validation states on `/login` and `/register`.
-* **Route Protection**: Validates that unauthenticated requests to `/discover` redirect to `/login`.
-* **Backend Health Probe**: End-to-end network check ensuring the frontend can communicate with the backend.
+The first run downloads a `mongod` binary (about 70 MB) into `~/.cache/mongodb-binaries`.
 
-### 3. Automated CI/CD Pipeline ([`.github/workflows/ci.yml`](.github/workflows/ci.yml))
-The workflow triggers on pull requests and pushes to `main`. It runs backend and frontend jobs in parallel, followed conditionally by end-to-end verification:
-1. `backend` (parallel): Node 20 setup $\rightarrow$ `npm ci` $\rightarrow$ `npm run typecheck` $\rightarrow$ `npm test` (Vitest) $\rightarrow$ `npm run build`.
-2. `frontend` (parallel): Node 20 setup $\rightarrow$ `npm ci` $\rightarrow$ `npm run typecheck` $\rightarrow$ `npm run lint` $\rightarrow$ `npm run build`.
-3. `e2e` (dependent & conditional): Depends on both `backend` and `frontend` completing successfully (`needs: [backend, frontend]`), and is gated to `refs/heads/main` pushes only (`if: github.ref == 'refs/heads/main'`). It installs Playwright Chromium browsers and runs end-to-end verification against the Vercel preview deployment (`gamora-saas-platform.vercel.app`). Note: because the CI workflow points `NEXT_PUBLIC_API_URL` to `gumora-platform-backend.onrender.com`, if that Render instance is suspended, the backend health probe test will be skipped by the current spec.
+### 2. Browser tests (Playwright), `cd client && npm run test:e2e`
+
+Mock-isolated tests in [`client/e2e/mocked/`](client/e2e/mocked/) run against a local production build. Every API call is answered by contract-shaped fixtures, and an unmocked call fails the test. They cover the homepage, the login and register forms (including that an invalid submit sends no request), the signed-out redirects from `/discover`, `/library` and `/dashboard/products`, and the catalog. Read-only availability checks against deployed services are in [`client/e2e/smoke/`](client/e2e/smoke/) and run only on request. See [`client/e2e/README.md`](client/e2e/README.md).
+
+Checkout is not exercised in the browser: no Cashfree session is created and no payment is made by any test.
+
+### 3. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml))
+
+On every push and pull request:
+1. `backend`: `npm ci` → `npm run typecheck` → `npm test` → `npm run build`.
+2. `frontend`: `npm ci` → `npm run typecheck` → `npm run lint` → `npm run build`.
+3. `e2e` (after `frontend`): installs Chromium and runs the mock-isolated Playwright suite.
+
+[`.github/workflows/smoke.yml`](.github/workflows/smoke.yml) runs the availability checks against deployed URLs and is triggered manually only.
 
 ---
 
@@ -256,7 +263,7 @@ The workflow triggers on pull requests and pushes to `main`. It runs backend and
 
 ### Prerequisites
 * **Node.js**: v20.x or v22.x LTS
-* **MongoDB**: Local MongoDB instance or MongoDB Atlas connection URI
+* **MongoDB**: a replica set or sharded cluster (payment settlement uses transactions). MongoDB Atlas clusters qualify. Locally, a single-node replica set works: start `mongod --replSet rs0`, then run `rs.initiate()` once in `mongosh`.
 * **Cloudinary Account**: Free tier credentials for image uploads
 * **Cashfree Account**: Sandbox credentials for testing payments
 * **Firecrawl API Key** *(Optional)*: For AI scraping functionality
@@ -282,8 +289,9 @@ Configure the following variables in `backend/.env`:
 | Variable Name | Required | Purpose | Example |
 | :--- | :--- | :--- | :--- |
 | `PORT` | Yes | Backend port | `5000` |
-| `MONGODB_URI` | Yes | MongoDB connection string | `mongodb://localhost:27017/gumora` |
-| `JWT_SECRET` | Yes | JWT signing secret | Random 32+ character string |
+| `MONGO_URI` | Yes | MongoDB connection string (replica set) | `mongodb://localhost:27017/gumora?replicaSet=rs0` |
+| `JWT_SECRET` | Yes | JWT signing secret | Output of `openssl rand -hex 32` |
+| `JWT_EXPIRES_IN` | Yes | Session lifetime; login fails if unset | `7d` |
 | `COOKIE_NAME` | Yes | Session cookie identifier | `gumora_session` |
 | `CASHFREE_APP_ID` | Yes | Cashfree client application ID | Sandbox / Production App ID |
 | `CASHFREE_SECRET_KEY` | Yes | Cashfree secret key | Sandbox / Production Secret |
@@ -296,6 +304,8 @@ Configure the following variables in `backend/.env`:
 | `UPSTASH_REDIS_REST_URL` | No | Upstash Redis REST URL | Optional |
 | `UPSTASH_REDIS_REST_TOKEN` | No | Upstash Redis REST token | Optional |
 | `FIRECRAWL_API_KEY` | No | Firecrawl API key | Optional |
+| `FIRECRAWL_API_BASE_URL` | No | Firecrawl API base URL override | Optional |
+| `SENTRY_DSN` | No | Sentry error reporting | Optional |
 
 Start the backend development server:
 ```bash
@@ -370,6 +380,16 @@ gumora-saas-platform/
 ├── screens/                    # Authentic application walkthrough screenshots
 └── README.md
 ```
+
+---
+
+## Known Limitations
+
+* **No live backend.** The public API is suspended (see [Deployment Status](#deployment-status)).
+* **Session token exposed to JavaScript.** To survive the Cashfree redirect, the buy flow calls `GET /api/auth/token`, stores the session JWT in `localStorage`, and the library page restores the cookie through `POST /api/auth/refresh-session`. While that token sits in `localStorage`, an XSS bug could steal it, so the HTTP-only cookie does not fully protect the session. Removing this flow needs testing against a real deployment and has not been done.
+* **No Cashfree webhook.** A payment settles only when the buyer returns to `/library`. Details: [`docs/payment-settlement.md`](docs/payment-settlement.md).
+* **Client-side route protection.** Protected pages redirect signed-out visitors after calling `/api/auth/me`. This is a usability measure; the API enforces authentication.
+* **Third-party images.** The homepage decorations are loaded from `assets.gumroad.com`.
 
 ---
 
