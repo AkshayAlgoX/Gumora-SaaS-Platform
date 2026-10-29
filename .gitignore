@@ -36,6 +36,10 @@ coverage/
 .vercel
 *.tsbuildinfo
 next-env.d.ts
+playwright-report/
+**/playwright-report/
+test-results/
+**/test-results/
 
 # Test files with secrets
 backend/test_cashfree_direct.js
