@@ -12,6 +12,7 @@ import { creatorSalesRouter } from './routes/creatorSales';
 import { publicProductsRouter } from './routes/publicProduct';
 import { checkoutRouter } from './routes/checkout';
 import { libraryRouter } from './routes/library';
+import { webhookRouter } from './routes/webhooks';
 
 // Rate limiters
 const generalLimiter = rateLimit({
@@ -67,6 +68,11 @@ export function createApp(){
     );
     
     app.use(cookieParser());
+
+    // Mounted before the JSON parser and the general limiter: webhook
+    // signatures cover the raw body, and Cashfree retries bursts of deliveries.
+    app.use("/api/webhooks", webhookRouter);
+
     app.use(express.json({ limit: '10mb' }));
 
     // Apply rate limiters

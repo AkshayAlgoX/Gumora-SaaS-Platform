@@ -67,13 +67,15 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          NEXT_PUBLIC_API_URL: https://gumora-platform-backend.onrender.com
+          # Build-time value only; nothing in this job calls the API.
+          NEXT_PUBLIC_API_URL: https://api.gumora.shop
 
-  # E2E Tests (only on main branch)
+  # Deterministic browser tests: a local production build with every API call
+  # answered by e2e/support/api-mock.ts. No deployed service is contacted.
+  # Live availability checks are in smoke.yml (manual trigger only).
   e2e:
     runs-on: ubuntu-latest
-    needs: [backend, frontend]
-    if: github.ref == 'refs/heads/main'
+    needs: [frontend]
     defaults:
       run:
         working-directory: ./client
@@ -94,11 +96,9 @@ jobs:
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps chromium
 
-      - name: Run E2E tests
+      - name: Run mock-isolated E2E tests
         run: npm run test:e2e
         env:
-          BASE_URL: https://gamora-saas-platform.vercel.app
-          NEXT_PUBLIC_API_URL: https://gumora-platform-backend.onrender.com
           CI: true
 
       - name: Upload Playwright Report

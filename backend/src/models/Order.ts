@@ -53,5 +53,7 @@ const OrderSchema = new Schema<OrderDoc>(
 );
 
 OrderSchema.index({ buyerId: 1, productId: 1, status: 1 });
+// Reconciliation sweep: pending orders by age.
+OrderSchema.index({ status: 1, createdAt: 1 });
 
 export const Order = mongoose.model<OrderDoc>("Order", OrderSchema);
