@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import BuyerShell from "../../../../components/buyer/common/buyer-shell";
 import LibraryClient, { LibraryItem } from "../../../../components/buyer/library/library-client";
@@ -13,8 +13,14 @@ function LibraryContent() {
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [isAuth, setIsAuth] = useState(false);
   const [confirmingPayment, setConfirmingPayment] = useState(false);
+  // Run once per page load. Removing db_order_id with replaceState updates
+  // useSearchParams, which would otherwise re-run this effect and confirm
+  // the same order a second time.
+  const started = useRef(false);
 
   useEffect(() => {
+    if (started.current) return;
+    started.current = true;
     const loadLibrary = async () => {
       try {
         // Get order ID from URL or localStorage
