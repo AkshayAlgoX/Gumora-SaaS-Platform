@@ -13,7 +13,7 @@ export async function requireAuth(req:AuthedRequest, res: Response, next: NextFu
         if(!token){
             return res.status(401).json({
                 ok: false,
-                errorr: "Unauth user! Please log in."
+                error: "Unauth user! Please log in."
             })
         }
 
@@ -23,7 +23,7 @@ export async function requireAuth(req:AuthedRequest, res: Response, next: NextFu
 if(!user){
     return res.status(401).json({
         ok: false,
-        errorr : 'Invalid session'
+        error : 'Invalid session'
     })
 }
 req.user = {

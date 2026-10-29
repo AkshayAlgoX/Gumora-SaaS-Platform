@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Card } from "../ui/card";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
+import { nextFromLocation } from "@/lib/auth/safe-next";
 
 function LoginForm() {
   const router = useRouter();
@@ -40,7 +41,7 @@ function LoginForm() {
       toast.success("Login successful");
       // Wait for cookies to settle
       await new Promise(resolve => setTimeout(resolve, 500));
-      router.push("/dashboard/products");
+      router.push(nextFromLocation());
     } catch (err) {
       console.error(err);
       toast.error("Login failed. Please try again.");
