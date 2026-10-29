@@ -10,8 +10,8 @@ import { test as base, expect, type Page, type Request } from "@playwright/test"
  * cannot silently depend on an endpoint it did not declare.
  *
  * Response bodies mirror the Express handlers in backend/src (paths and field
- * names are taken from those files, including the `errorr` typo returned by
- * requireAuth).
+ * names are taken from those files). The client reads only `user` from
+ * /api/auth/me, so the error key of a signed-out response does not affect it.
  */
 
 export const E2E_API_URL = process.env.E2E_API_URL ?? "http://127.0.0.1:59999";
@@ -42,7 +42,7 @@ export const fixtures = {
   },
   /** GET /api/auth/me without a session cookie (middleware/requireAuth.ts) */
   meSignedOut() {
-    return { status: 401, json: { ok: false, errorr: "Unauth user! Please log in." } };
+    return { status: 401, json: { ok: false, error: "Unauth user! Please log in." } };
   },
   /** GET /api/products (routes/publicProduct.ts) */
   products(items: Array<{ _id: string; title: string; price: number; slug: string; coverUrl: string | null }>) {
