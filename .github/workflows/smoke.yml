@@ -1,0 +1,44 @@
+name: Deployment availability smoke
+
+# Manual only. Makes read-only GET requests to deployed services and reports
+# their state; it does not sign in, create orders or contact Cashfree.
+on:
+  workflow_dispatch:
+    inputs:
+      web_url:
+        description: Frontend base URL
+        default: https://www.gumora.shop
+        required: true
+      api_url:
+        description: Backend base URL
+        default: https://api.gumora.shop
+        required: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./client
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run smoke checks
+        run: npm run test:e2e:smoke
+        env:
+          CI: true
+          SMOKE_WEB_URL: ${{ inputs.web_url }}
+          SMOKE_API_URL: ${{ inputs.api_url }}
