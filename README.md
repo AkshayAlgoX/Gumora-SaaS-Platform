@@ -23,7 +23,7 @@ The platform is designed around a decoupled dual-host architecture: a Next.js 16
 ### Core Engineering Highlights
 
 1. **Transactional Payment Settlement**: [`backend/src/services/settlement.ts`](backend/src/services/settlement.ts) fetches the order from Cashfree, requires `order_id`, `order_status === "PAID"`, `INR` and an exact paise-level amount match, and then moves the order `pending → paid` and increments `stats.soldCount` in one MongoDB transaction. Retries, duplicate callbacks and concurrent confirmations settle once. Design, outcome codes and limitations: [`docs/payment-settlement.md`](docs/payment-settlement.md).
-2. **Cross-Origin Session Security**: Configured for independent cross-domain deployment (Vercel frontend $\longleftrightarrow$ Render backend) using signed JWT cookies with `SameSite=None; Secure; HttpOnly`, fortified with Helmet security headers, CORS origin whitelisting, and tiered rate limiting.
+2. **Cross-Origin Session Security**: Configured for independent cross-domain deployment (Vercel frontend $\longleftrightarrow$ Render backend) using signed JWT cookies (`HttpOnly; Secure`, `SameSite` configurable), fortified with Helmet security headers, CORS origin whitelisting, and tiered rate limiting.
 3. **Multi-Tier Redis Caching**: Integrates Upstash Redis ([`backend/src/lib/cache.ts`](backend/src/lib/cache.ts)) with structured key namespaces for product listings (60s TTL), slug-based lookups (300s TTL), and user libraries (60s TTL). Utilizes non-blocking cursor-based `SCAN` pattern purging to ensure cache consistency without blocking the event loop.
 4. **Firecrawl Ingestion & Media Pipeline**: Creators can import products by URL ([`backend/src/routes/creatorImport.ts`](backend/src/routes/creatorImport.ts)). Firecrawl extracts product descriptions constrained to strict JSON schemas, while candidate assets undergo Sharp-based dimension and MIME validation before Cloudinary CDN ingestion.
 5. **Testing & CI**: GitHub Actions runs type checks, lint, builds, Vitest suites (including settlement tests against a real MongoDB replica set) and a mock-isolated Playwright suite on every push and pull request. No CI job contacts a Gumora deployment, a hosted database or Cashfree (CI only downloads the `mongod` binary and Playwright browsers).
@@ -134,23 +134,19 @@ Payment fraud frequently arises from client-side state manipulation (e.g. spoofi
 ```
 
 1. **Session Creation**: The buyer enters a mobile number (Cashfree requires `customer_phone`; it is validated, forwarded to Cashfree and not stored). The backend creates a `pending` order whose provider id is `gum_<orderId>` and requests a `payment_session_id` from Cashfree (`POST /orders`).
-2. **Verification and settlement**: When the buyer returns to `/library`, the page restores the session and calls `POST /api/checkout/confirm`. The backend fetches the order from Cashfree, rejects any missing or mismatched field, and commits the paid state and the sales counter in one transaction. The response carries an outcome code and a `retryable` flag.
-3. **Deployment requirement**: settlement needs a MongoDB replica set or sharded cluster (transactions). On a standalone server it refuses with `TRANSACTIONS_UNSUPPORTED` instead of writing partially.
-4. **Deprecated public endpoint**: `POST /api/checkout/confirm-public` runs the same settlement for older clients but always answers `202 { ok: true, accepted: true }`, so it reveals nothing about a guessed order id. It does not grant library access.
+2. **Verification and settlement**: When the buyer returns to `/library`, the page calls `POST /api/checkout/confirm` as the logged-in buyer. The backend fetches the order from Cashfree, rejects any missing or mismatched field, and commits the paid state and the sales counter in one transaction. The response carries an outcome code and a `retryable` flag.
+3. **Buyer never returns**: a signature-verified Cashfree webhook (`POST /api/webhooks/cashfree`) and a reconciliation sweep (`RECONCILE_INTERVAL_MS` or `npm run reconcile`) run the same settlement. The webhook payload only identifies the order, and the status and amount always come from Cashfree's API. Webhooks, sweeps and `/confirm` in any combination count a sale once. See [`docs/payment-settlement.md`](docs/payment-settlement.md).
+4. **Deployment requirement**: settlement needs a MongoDB replica set or sharded cluster (transactions). On a standalone server it refuses with `TRANSACTIONS_UNSUPPORTED` instead of writing partially.
+5. **Deprecated public endpoint**: `POST /api/checkout/confirm-public` runs the same settlement for older clients but always answers `202 { ok: true, accepted: true }`, so it reveals nothing about a guessed order id. It does not grant library access.
 
 ### 2. Cross-Origin Session Security ([`backend/src/middleware/requireAuth.ts`](backend/src/middleware/requireAuth.ts))
 
-Because the frontend is deployed on Vercel (`gumora.shop`) and the API resides on Render (`api.gumora.shop`), standard cross-origin cookie restrictions apply:
+The frontend (Vercel, `www.gumora.shop`) and the API (Render, `api.gumora.shop`) are different origins on the same site. Preview frontends on `*.vercel.app` are cross-site.
 
-* **Cookie Constraints**:
-  ```typescript
-  res.cookie(process.env.COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "none",
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-  });
-  ```
+* **Session cookie** ([`backend/src/lib/auth.ts`](backend/src/lib/auth.ts)):
+  - The JWT is stored only in an `HttpOnly; Secure` cookie, and the JWT and the cookie both expire after 7 days.
+  - `SameSite` is set by `COOKIE_SAMESITE`. The default is `none`, for cross-site frontends; use `lax` when the frontend and API share `gumora.shop`.
+  - No endpoint returns the token to JavaScript or accepts one from a request body. See [`docs/authentication.md`](docs/authentication.md).
 * **Ownership Boundary Enforcement**:
   Every creator-facing mutation invokes `loadOwnProduct` or `ownProductOrSend`, checking that `String(product.creatorId) === req.user.id`. Requests for another creator's product are refused (HTTP 400 from the product routes, HTTP 403 from the import routes).
 * **Security Headers & Rate Limiting**:
@@ -207,8 +203,6 @@ All routes are mounted under `/api` and enforce strict JSON payload validation:
 | `POST` | `/api/auth/login` | Authenticate and set the HTTP-only session cookie | Public |
 | `POST` | `/api/auth/logout` | Clear the session cookie | Public |
 | `GET` | `/api/auth/me` | Current user profile | Authenticated |
-| `GET` | `/api/auth/token` | Return the session JWT to the page (see [Known Limitations](#known-limitations)) | Authenticated |
-| `POST` | `/api/auth/refresh-session` | Re-set the session cookie from a JWT in the body | Public (JWT required) |
 | `GET` | `/api/products` | Published product catalog (Redis cached) | Public |
 | `GET` | `/api/products/:slug` | Single published product by slug | Public |
 | `GET` | `/api/creator/products` | List the creator's products | Authenticated |
@@ -225,6 +219,7 @@ All routes are mounted under `/api` and enforce strict JSON payload validation:
 | `POST` | `/api/checkout/create-session` | Create a pending order and Cashfree payment session | Authenticated |
 | `POST` | `/api/checkout/confirm` | Verify with Cashfree and settle the caller's order | Authenticated |
 | `POST` | `/api/checkout/confirm-public` | Deprecated settlement trigger; uniform `202` response | Public (rate limited) |
+| `POST` | `/api/webhooks/cashfree` | Cashfree payment events; triggers verified settlement | Cashfree signature |
 | `GET` | `/api/library` | The buyer's paid products | Authenticated |
 | `GET` | `/api/library/:productId/assets` | Download URLs for a purchased product | Authenticated (buyer of that product) |
 
@@ -238,6 +233,8 @@ All routes are mounted under `/api` and enforce strict JSON payload validation:
 * [`tests/settlement.standalone.test.ts`](backend/tests/settlement.standalone.test.ts): on a standalone `mongod`, settlement must refuse and write nothing.
 * [`tests/checkout.routes.test.ts`](backend/tests/checkout.routes.test.ts): checkout HTTP contracts with real JWT cookies; only the outbound Cashfree client is stubbed.
 * [`tests/safeFetch.test.ts`](backend/tests/safeFetch.test.ts): the image-import SSRF guard against a local HTTP server.
+* [`tests/payment-recovery.integration.test.ts`](backend/tests/payment-recovery.integration.test.ts) and [`tests/cashfreeWebhook.test.ts`](backend/tests/cashfreeWebhook.test.ts): the webhook and reconciliation sweep on the replica set (duplicate deliveries, webhook racing `/confirm`, overlapping sweeps, forged and stale signatures), plus signature verification against an `openssl`-computed vector.
+* [`tests/auth.session.test.ts`](backend/tests/auth.session.test.ts): cookie attributes, the removed token endpoints and the default token lifetime.
 * [`tests/money.test.ts`](backend/tests/money.test.ts), [`tests/api.test.ts`](backend/tests/api.test.ts), [`tests/utils.test.ts`](backend/tests/utils.test.ts): exact paise conversion, health and auth middleware, validation, Helmet and CORS headers, rate-limit headers, slug utilities.
 
 The first run downloads a `mongod` binary (about 70 MB) into `~/.cache/mongodb-binaries`.
@@ -291,11 +288,13 @@ Configure the following variables in `backend/.env`:
 | `PORT` | Yes | Backend port | `5000` |
 | `MONGO_URI` | Yes | MongoDB connection string (replica set) | `mongodb://localhost:27017/gumora?replicaSet=rs0` |
 | `JWT_SECRET` | Yes | JWT signing secret | Output of `openssl rand -hex 32` |
-| `JWT_EXPIRES_IN` | Yes | Session lifetime; login fails if unset | `7d` |
+| `JWT_EXPIRES_IN` | No | Token lifetime (defaults to `7d`, the cookie lifetime) | `7d` |
 | `COOKIE_NAME` | Yes | Session cookie identifier | `gumora_session` |
+| `COOKIE_SAMESITE` | No | `lax`, `strict` or `none` (default `none`) | `lax` |
 | `CASHFREE_APP_ID` | Yes | Cashfree client application ID | Sandbox / Production App ID |
-| `CASHFREE_SECRET_KEY` | Yes | Cashfree secret key | Sandbox / Production Secret |
+| `CASHFREE_SECRET_KEY` | Yes | Cashfree secret key; also verifies webhook signatures | Sandbox / Production Secret |
 | `CASHFREE_ENV` | Yes | Cashfree environment mode | `sandbox` or `production` |
+| `RECONCILE_INTERVAL_MS` | No | Re-check pending orders in process every N ms (off when unset) | `300000` |
 | `CLOUDINARY_CLOUD_NAME` | Yes | Cloudinary cloud identifier | Cloud name |
 | `CLOUDINARY_API_KEY` | Yes | Cloudinary API key | API key |
 | `CLOUDINARY_API_SECRET` | Yes | Cloudinary secret | Secret string |
@@ -386,8 +385,8 @@ gumora-saas-platform/
 ## Known Limitations
 
 * **No live backend.** The public API is suspended (see [Deployment Status](#deployment-status)).
-* **Session token exposed to JavaScript.** To survive the Cashfree redirect, the buy flow calls `GET /api/auth/token`, stores the session JWT in `localStorage`, and the library page restores the cookie through `POST /api/auth/refresh-session`. While that token sits in `localStorage`, an XSS bug could steal it, so the HTTP-only cookie does not fully protect the session. Removing this flow needs testing against a real deployment and has not been done.
-* **No Cashfree webhook.** A payment settles only when the buyer returns to `/library`. Details: [`docs/payment-settlement.md`](docs/payment-settlement.md).
+* **Webhook not exercised against Cashfree.** The webhook and sweep are tested with a stubbed Cashfree client. The signature scheme follows Cashfree's documentation but has not been checked with a real sandbox delivery, and the webhook URL must be configured in the Cashfree dashboard.
+* **No CSRF token.** With `COOKIE_SAMESITE=none`, cross-site protection rests on JSON-only request bodies and the CORS allow-list ([`docs/authentication.md`](docs/authentication.md)).
 * **Client-side route protection.** Protected pages redirect signed-out visitors after calling `/api/auth/me`. This is a usability measure; the API enforces authentication.
 * **Third-party images.** The homepage decorations are loaded from `assets.gumroad.com`.
 
