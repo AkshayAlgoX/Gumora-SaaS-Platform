@@ -1,475 +1,398 @@
-# Note on E2E Tests
+# Gumora SaaS Platform
+### Full-Stack Digital Products Marketplace with Cashfree Payments, Redis Caching, and Firecrawl Content Ingestion
 
-The end-to-end (E2E) tests in this project require the website (frontend and backend) to be running and accessible locally. If the server is not running when you execute `npm run test:e2e`, some tests may fail (for example, tests that check the login page).
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9_Strict_Mode-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16.1_App_Router-black?logo=next.js&logoColor=white)](https://nextjs.org/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![Express](https://img.shields.io/badge/Express-4.22-000000?logo=express&logoColor=white)](https://expressjs.com/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose_9-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com/)
+[![Redis](https://img.shields.io/badge/Redis-Upstash_Serverless-DC382D?logo=redis&logoColor=white)](https://upstash.com/)
+[![Cashfree](https://img.shields.io/badge/Payments-Cashfree_PG-0066FF)](https://www.cashfree.com/)
+[![Cloudinary](https://img.shields.io/badge/Storage-Cloudinary_CDN-3448C5?logo=cloudinary&logoColor=white)](https://cloudinary.com/)
 
-If you see failed E2E tests, please ensure that:
-- The frontend and backend servers are running locally.
-- The application is accessible at the expected URL.
-
-This is expected behavior if the site is not running during test execution. For more details, see the test files and Playwright documentation.
-<p align="center">
-  <img src="./screens/logo1.png" alt="Gumora Logo" width="80"/>
-</p>
-
-<h1 align="center">🚀 Gumora - Digital Products Marketplace</h1>
-
-<p align="center">
-  <strong>A production-ready, full-stack SaaS platform enabling creators to monetize digital products with AI-powered content import, secure payments, and enterprise-grade security.</strong>
-</p>
-
-<p align="center">
-  <a href="https://gumora.shop">
-    <img src="https://img.shields.io/badge/🌐_Live_Demo-gumora.shop-blue?style=for-the-badge" alt="Live Demo"/>
-  </a>
-  <a href="https://api.gumora.shop">
-    <img src="https://img.shields.io/badge/🔌_API-api.gumora.shop-green?style=for-the-badge" alt="API"/>
-  </a>
-</p>
-
-<p align="center">
-  <img src="https://github.com/AkshayAlgoX/gamora-saas-platform/actions/workflows/ci.yml/badge.svg" alt="CI/CD"/>
-  <img src="https://img.shields.io/badge/TypeScript-Strict_Mode-blue" alt="TypeScript"/>
-  <img src="https://img.shields.io/badge/Tests-Vitest_+_Playwright-green" alt="Tests"/>
-  <img src="https://img.shields.io/badge/Security-Helmet_+_Rate_Limiting-red" alt="Security"/>
-</p>
+> **A full-stack creator commerce marketplace built to demonstrate decoupled cross-origin session authentication, server-authoritative payment reconciliation, structured AI content extraction, and multi-tier caching.**
 
 ---
 
-## 📸 Screenshots
+## Overview
 
-<!-- TODO: Add your screenshots here -->
+Gumora is a digital products commerce platform inspired by Gumroad. It provides independent creators with tools to list digital downloads, automate content ingestion from external URLs, and monitor real-time sales telemetry, while providing buyers with a friction-free discovery catalog, Cashfree payment checkout, and an authenticated digital asset library.
 
-| Dashboard | Product Editor | Checkout |
-|-----------|----------------|----------|
-| ![Dashboard](./screens/dashboard.png) | ![Editor](./screens/products_details.png) | ![Checkout](./screens/payments.png) |
+The platform is designed around a decoupled dual-host architecture: a Next.js 16 App Router frontend paired with an Express/TypeScript REST backend. The system verifies every payment with Cashfree on the server (never relying on client-side status flags), uses cross-origin HTTP-only cookie sessions (see the session caveat under [Known Limitations](#known-limitations)), cursor-based Redis cache invalidation, and automated media inspection via Sharp before CDN upload.
 
-| Library | Discover | Login |
-|---------|----------|-------|
-| ![Library](./screens/library.png) | ![Discover](./screens/discover.png) | ![Login](./screens/signin.png) |
+### Core Engineering Highlights
 
-<!-- 
-📷 SCREENSHOT GUIDE:
-1. Create a folder called "screens" in the root directory
-2. Add your screenshots with these names:
-   - logo.png (optional - for header)
-   - dashboard.png
-   - editor.png  
-   - checkout.png
-   - library.png
-   - discover.png
-   - login.png
-3. Or replace the filenames above with your actual screenshot names
--->
+1. **Transactional Payment Settlement**: [`backend/src/services/settlement.ts`](backend/src/services/settlement.ts) fetches the order from Cashfree, requires `order_id`, `order_status === "PAID"`, `INR` and an exact paise-level amount match, and then moves the order `pending → paid` and increments `stats.soldCount` in one MongoDB transaction. Retries, duplicate callbacks and concurrent confirmations settle once. Design, outcome codes and limitations: [`docs/payment-settlement.md`](docs/payment-settlement.md).
+2. **Cross-Origin Session Security**: Configured for independent cross-domain deployment (Vercel frontend $\longleftrightarrow$ Render backend) using signed JWT cookies (`HttpOnly; Secure`, `SameSite` configurable), fortified with Helmet security headers, CORS origin whitelisting, and tiered rate limiting.
+3. **Multi-Tier Redis Caching**: Integrates Upstash Redis ([`backend/src/lib/cache.ts`](backend/src/lib/cache.ts)) with structured key namespaces for product listings (60s TTL), slug-based lookups (300s TTL), and user libraries (60s TTL). Utilizes non-blocking cursor-based `SCAN` pattern purging to ensure cache consistency without blocking the event loop.
+4. **Firecrawl Ingestion & Media Pipeline**: Creators can import products by URL ([`backend/src/routes/creatorImport.ts`](backend/src/routes/creatorImport.ts)). Firecrawl extracts product descriptions constrained to strict JSON schemas, while candidate assets undergo Sharp-based dimension and MIME validation before Cloudinary CDN ingestion.
+5. **Testing & CI**: GitHub Actions runs type checks, lint, builds, Vitest suites (including settlement tests against a real MongoDB replica set) and a mock-isolated Playwright suite on every push and pull request. No CI job contacts a Gumora deployment, a hosted database or Cashfree (CI only downloads the `mongod` binary and Playwright browsers).
 
 ---
 
-## ⚡ What is Gumora?
+## Deployment Status
 
-Gumora is a **Gumroad-style digital marketplace** where creators can:
-- Sell digital products with AI-powered product import from existing marketplaces
-- Import product details, images, and pricing automatically using web scraping
-- Accept payments via Cashfree payment gateway
-- Track sales and revenue in real-time
-
-**Buyers can:**
-- Discover and purchase digital products
-- Access purchased products in their personal library
-- Download assets securely
+> [!NOTE]
+> **Deployment state, checked 2026-10-28 19:25 UTC:**
+> * **Frontend Client**: Deployed on Vercel at [**https://www.gumora.shop**](https://www.gumora.shop) (HTTP 200; `gumora.shop` redirects there).
+> * **Backend API Service**: `https://api.gumora.shop` (Render, custom domain) returns HTTP 503 with Render's "Service Suspended" page (`x-render-routing: suspend`). Sign-in, catalog, checkout and library do not work on the public site while the API is suspended. There is no live demo.
+> * **Local Evaluation**: For a fully functional evaluation with backend and database, follow the [Local Development Setup](#local-development-setup) instructions below.
 
 ---
 
-## 🎯 Key Highlights (For Recruiters)
+## Application Walkthrough & User Journeys
 
-| What Recruiters Look For | ✅ This Project Has |
-|--------------------------|---------------------|
-| **Full-Stack Skills** | Next.js 16 + Express.js + MongoDB |
-| **TypeScript** | Strict mode enabled, end-to-end type safety |
-| **Authentication** | JWT + HTTP-only cookies, cross-origin handling |
-| **Payment Integration** | Complete Cashfree gateway implementation |
-| **AI Integration** | Firecrawl-powered intelligent content import |
-| **Testing** | Unit tests (Vitest) + E2E tests (Playwright) |
-| **CI/CD** | GitHub Actions automated pipeline |
-| **Security** | Helmet, rate limiting, input validation |
-| **Caching** | Redis (Upstash) for performance |
-| **Error Monitoring** | Sentry integration |
-| **Cloud Deployment** | Vercel + Render production setup |
+| Creator Dashboard | Product Editor & Ingestion | Checkout Flow |
+|---|---|---|
+| ![Creator Dashboard](screens/dashboard.png) | ![Product Editor](screens/products_details.png) | ![Checkout Flow](screens/payments.png) |
+| *Real-time sales revenue, volume metrics, and product inventory management.* | *Asset management, pricing controls, and AI-assisted content import.* | *Seamless buyer checkout powered by Cashfree Payment Gateway.* |
+
+| Buyer Library | Discovery Catalog | Authentication |
+|---|---|---|
+| ![Buyer Library](screens/library.png) | ![Discovery Catalog](screens/discover.png) | ![Authentication](screens/signin.png) |
+| *Authenticated download access for purchased digital downloads.* | *Public marketplace catalog with Redis-cached product cards.* | *Session authentication with cross-origin HTTP-only cookies.* |
 
 ---
 
-## 🛠️ Tech Stack
+## System Architecture
 
-### Frontend
-```
-Next.js 16 (App Router) • React 19 • TypeScript • Tailwind CSS
-```
+![System Architecture](screens/architecture.png)
 
-### Backend
-```
-Express.js • Node.js 20+ • TypeScript (Strict) • MongoDB Atlas
-```
+```mermaid
+flowchart TD
+    subgraph CLIENT["Frontend (Next.js 16 + React 19)"]
+        UI1[Buyer Experience<br/>Discover, Product Details, Library]
+        UI2[Creator Studio<br/>Product Editor, Sales Telemetry, Import]
+        SDK[Cashfree Web SDK]
+    end
 
-### Infrastructure
-```
-Vercel (Frontend) • Render (Backend) • Upstash Redis • Cloudinary CDN
-```
+    subgraph SECURITY["Security & Middleware Boundary"]
+        CORS[CORS Whitelist<br/>gumora.shop · vercel.app]
+        HELMET[Helmet Security Headers<br/>nosniff · frameguard]
+        RATELIMIT[Rate Limiter<br/>10 auth / 100 API per 15 min]
+        AUTH_MID[requireAuth Middleware<br/>JWT in HttpOnly Cookie]
+    end
 
-### Integrations
-```
-Cashfree (Payments) • Firecrawl (AI Scraping) • Sentry (Monitoring)
-```
+    subgraph SERVICES["Backend Services (Express + TypeScript)"]
+        AUTH_SVC[Auth Router<br/>bcrypt · JWT Signer]
+        PROD_SVC[Product Service<br/>Slug Engine · CRUD]
+        CHECKOUT_SVC[Checkout Service<br/>Authoritative Reconciliation]
+        IMPORT_SVC[Creator Import<br/>Firecrawl + Sharp Validator]
+    end
 
-### DevOps & Testing
+    subgraph STORAGE["Persistence & Infrastructure"]
+        MONGO[(MongoDB Atlas<br/>Users, Products, Orders, Assets)]
+        REDIS[(Upstash Redis<br/>Key Caches · SCAN Invalidation)]
+        CLOUDINARY[Cloudinary CDN<br/>Optimized Image Storage]
+        CASHFREE_API[Cashfree PG Gateway<br/>Order Settlement Authority]
+        FIRECRAWL_API[Firecrawl API<br/>Structured Web Scraper]
+    end
+
+    UI1 --> CORS
+    UI2 --> CORS
+    CORS --> HELMET --> RATELIMIT --> AUTH_MID
+
+    AUTH_MID --> AUTH_SVC --> MONGO
+    AUTH_MID --> PROD_SVC --> MONGO
+    PROD_SVC <--> REDIS
+    AUTH_MID --> CHECKOUT_SVC
+    CHECKOUT_SVC --> MONGO
+    CHECKOUT_SVC <--> CASHFREE_API
+    AUTH_MID --> IMPORT_SVC
+    IMPORT_SVC <--> FIRECRAWL_API
+    IMPORT_SVC --> CLOUDINARY
+    IMPORT_SVC --> MONGO
 ```
-GitHub Actions • Vitest • Playwright • Docker-ready
-```
-
-<details>
-<summary>📊 Full Tech Stack Table</summary>
-
-| Category | Technologies |
-|----------|--------------|
-| **Frontend** | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS |
-| **Backend** | Express.js, Node.js 20+, TypeScript (Strict Mode) |
-| **Database** | MongoDB Atlas with Mongoose ODM |
-| **Caching** | Upstash Redis (Serverless) |
-| **File Storage** | Cloudinary (CDN + Image Optimization) |
-| **Payments** | Cashfree Payment Gateway |
-| **AI/ML** | Firecrawl (Web Scraping + Structured Extraction) |
-| **Auth** | JWT + HTTP-only Cookies |
-| **Security** | Helmet.js, express-rate-limit, Zod Validation |
-| **Testing** | Vitest (Unit), Playwright (E2E) |
-| **CI/CD** | GitHub Actions |
-| **Monitoring** | Sentry (Error Tracking) |
-| **Hosting** | Vercel (Frontend), Render (Backend) |
-
-</details>
 
 ---
 
-## ✨ Features
+## Technical Implementation Details
 
-### 👨‍🎨 Creator Dashboard
-- ✅ Full CRUD operations for digital products
-- ✅ AI-powered product import via Firecrawl
-- ✅ Automated image processing + Cloudinary CDN
-- ✅ Real-time sales tracking & analytics
-- ✅ Draft/Publish workflow
-- ✅ Order history with transaction details
+### 1. Server-Authoritative Payment Lifecycle ([`backend/src/routes/checkout.ts`](backend/src/routes/checkout.ts))
 
-### 🛒 Buyer Experience
-- ✅ Browse and discover digital products
-- ✅ Secure checkout with Cashfree
-- ✅ Personal library for purchased products
-- ✅ Authenticated file downloads
+Payment fraud frequently arises from client-side state manipulation (e.g. spoofing a success redirect callback). Gumora eliminates this attack vector through direct gateway reconciliation:
 
-### 🔐 Security & Performance
-- ✅ JWT authentication with HTTP-only cookies
-- ✅ Helmet.js security headers
-- ✅ Rate limiting (10 auth / 100 API per 15min)
-- ✅ Zod input validation
-- ✅ Redis caching layer
-- ✅ Sentry error tracking
+```
+[Buyer Client]          [Gumora Backend]             [Cashfree Gateway]           [MongoDB]
+      │                        │                             │                        │
+      ├── POST /create-session ┼────────────────────────────►│                        │
+      │ (productId, phone)     │ Create Order (Pending)      │                        ├─► Order (pending)
+      │                        │────────────────────────────►│ POST /orders           │
+      │                        │◄────────────────────────────┤ (payment_session_id)   │
+      │◄── payment_session_id ─┤                             │                        │
+      │                        │                             │                        │
+      ├── Completes Payment ───┼────────────────────────────►│                        │
+      │                        │                             │                        │
+      ├── POST /confirm ──────►│                             │                        │
+      │   (orderId)            │ GET /orders/{providerOrderId}│                        │
+      │                        │────────────────────────────►│                        │
+      │                        │◄────────────────────────────┤ order_status: "PAID"   │
+      │                        │                             │                        │
+      │                        │ One MongoDB transaction ────┼───────────────────────►├─► Order (pending→paid)
+      │                        │ (or nothing is written)     │                        ├─► Product (soldCount +1)
+      │◄── 200 OK (Purchased) ─┤                             │                        │
+```
+
+1. **Session Creation**: The buyer enters a mobile number (Cashfree requires `customer_phone`; it is validated, forwarded to Cashfree and not stored). The backend creates a `pending` order whose provider id is `gum_<orderId>` and requests a `payment_session_id` from Cashfree (`POST /orders`).
+2. **Verification and settlement**: When the buyer returns to `/library`, the page calls `POST /api/checkout/confirm` as the logged-in buyer. The backend fetches the order from Cashfree, rejects any missing or mismatched field, and commits the paid state and the sales counter in one transaction. The response carries an outcome code and a `retryable` flag.
+3. **Buyer never returns**: a signature-verified Cashfree webhook (`POST /api/webhooks/cashfree`) and a reconciliation sweep (`RECONCILE_INTERVAL_MS` or `npm run reconcile`) run the same settlement. The webhook payload only identifies the order, and the status and amount always come from Cashfree's API. Webhooks, sweeps and `/confirm` in any combination count a sale once. See [`docs/payment-settlement.md`](docs/payment-settlement.md).
+4. **Deployment requirement**: settlement needs a MongoDB replica set or sharded cluster (transactions). On a standalone server it refuses with `TRANSACTIONS_UNSUPPORTED` instead of writing partially.
+5. **Deprecated public endpoint**: `POST /api/checkout/confirm-public` runs the same settlement for older clients but always answers `202 { ok: true, accepted: true }`, so it reveals nothing about a guessed order id. It does not grant library access.
+
+### 2. Cross-Origin Session Security ([`backend/src/middleware/requireAuth.ts`](backend/src/middleware/requireAuth.ts))
+
+The frontend (Vercel, `www.gumora.shop`) and the API (Render, `api.gumora.shop`) are different origins on the same site. Preview frontends on `*.vercel.app` are cross-site.
+
+* **Session cookie** ([`backend/src/lib/auth.ts`](backend/src/lib/auth.ts)):
+  - The JWT is stored only in an `HttpOnly; Secure` cookie, and the JWT and the cookie both expire after 7 days.
+  - `SameSite` is set by `COOKIE_SAMESITE`. The default is `none`, for cross-site frontends; use `lax` when the frontend and API share `gumora.shop`.
+  - No endpoint returns the token to JavaScript or accepts one from a request body. See [`docs/authentication.md`](docs/authentication.md).
+* **Ownership Boundary Enforcement**:
+  Every creator-facing mutation invokes `loadOwnProduct` or `ownProductOrSend`, checking that `String(product.creatorId) === req.user.id`. Requests for another creator's product are refused (HTTP 400 from the product routes, HTTP 403 from the import routes).
+* **Security Headers & Rate Limiting**:
+  - Helmet configured with `nosniff` and cross-origin resource policy.
+  - Dedicated authentication rate limiter: 10 attempts per 15-minute window (`/api/auth/login`, `/api/auth/register`).
+  - General API rate limiter: 100 requests per 15-minute window across all other endpoints.
+
+### 3. Upstash Redis Caching Engine ([`backend/src/lib/cache.ts`](backend/src/lib/cache.ts))
+
+To prevent database bottlenecking on high-read public discovery routes, Gumora integrates an Upstash Redis caching layer:
+
+* **Namespaced Key Architecture**:
+  - `products:list` — Public marketplace product catalog (TTL: 60s).
+  - `products:slug:${slug}` — Individual product detail page (TTL: 300s).
+  - `library:user:${userId}` — Authenticated buyer asset library (TTL: 60s).
+* **Cursor-Based Invalidation**:
+  Because the serverless Redis tier restricts the blocking `KEYS` command, cache purging implements a non-blocking `SCAN` iteration:
+  ```typescript
+  export async function cacheDeletePattern(pattern: string): Promise<boolean> {
+    const client = getRedis();
+    if (!client) return false;
+    let cursor = 0;
+    do {
+      const result = await client.scan(cursor, { match: pattern, count: 100 });
+      cursor = Number(result[0]);
+      const keys = result[1] as string[];
+      if (keys.length > 0) {
+        await Promise.all(keys.map((key) => client.del(key)));
+      }
+    } while (cursor !== 0);
+    return true;
+  }
+  ```
+* **Event-Driven Cache Busting**: Product creation, edits, and deletions automatically invalidate `products:list` and the specific product slug key.
+
+### 4. AI Content Ingestion Pipeline ([`backend/src/routes/creatorImport.ts`](backend/src/routes/creatorImport.ts))
+
+Gumora enables creators to import products from external storefronts:
+
+1. **Firecrawl Scraping**: Dispatches external URLs to Firecrawl with schema constraints (`PRODUCT_DESC_SCHEMA`), extracting structured summaries and candidate image URLs.
+2. **Asset Validation (`downloadAndInspectImage`)**: Selected image URLs are downloaded through `safeFetch` (public addresses only, redirects re-validated, 10 MB cap enforced while streaming), the content is sniffed with `file-type` and must be an `image/*` type, and Sharp reads its dimensions.
+3. **CDN Upload**: Validated image buffers are piped directly to Cloudinary under isolated product folder paths (`gumroad-ai-clone/products/{productId}`) and persisted as `ImageAsset` documents.
 
 ---
 
-## 🏗️ System Architecture
+## API Reference
 
- ![System Architecture](./screens/architecture.png) 
+All routes are mounted under `/api` and enforce strict JSON payload validation:
 
-## 🚀 Quick Start
+| Method | Endpoint | Description | Auth Required |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/healthz` | Health check (`OK`) | Public |
+| `POST` | `/api/auth/register` | Register a user account | Public |
+| `POST` | `/api/auth/login` | Authenticate and set the HTTP-only session cookie | Public |
+| `POST` | `/api/auth/logout` | Clear the session cookie | Public |
+| `GET` | `/api/auth/me` | Current user profile | Authenticated |
+| `GET` | `/api/products` | Published product catalog (Redis cached) | Public |
+| `GET` | `/api/products/:slug` | Single published product by slug | Public |
+| `GET` | `/api/creator/products` | List the creator's products | Authenticated |
+| `POST` | `/api/creator/products` | Create a draft product | Authenticated |
+| `GET` | `/api/creator/products/:productId` | Get one of the creator's products | Authenticated (owner) |
+| `PATCH` | `/api/creator/products/:productId` | Update product details and pricing | Authenticated (owner) |
+| `PATCH` | `/api/creator/products/:productId/cover` | Set the cover image | Authenticated (owner) |
+| `PATCH` | `/api/creator/products/:productId/publish` | Publish or unpublish | Authenticated (owner) |
+| `POST` | `/api/creator/products/:productId/firecrawl/search` | Search the web for product sources | Authenticated (owner) |
+| `POST` | `/api/creator/products/:productId/firecrawl/scrape` | Extract description and image candidates from a URL | Authenticated (owner) |
+| `GET` | `/api/creator/products/:productId/assets` | List product images | Authenticated (owner) |
+| `POST` | `/api/creator/products/:productId/assets/ingest` | Download, inspect and upload selected images | Authenticated (owner) |
+| `GET` | `/api/creator/sales` | Sales summary for the creator | Creator |
+| `POST` | `/api/checkout/create-session` | Create a pending order and Cashfree payment session | Authenticated |
+| `POST` | `/api/checkout/confirm` | Verify with Cashfree and settle the caller's order | Authenticated |
+| `POST` | `/api/checkout/confirm-public` | Deprecated settlement trigger; uniform `202` response | Public (rate limited) |
+| `POST` | `/api/webhooks/cashfree` | Cashfree payment events; triggers verified settlement | Cashfree signature |
+| `GET` | `/api/library` | The buyer's paid products | Authenticated |
+| `GET` | `/api/library/:productId/assets` | Download URLs for a purchased product | Authenticated (buyer of that product) |
+
+---
+
+## Testing & Quality Assurance
+
+### 1. Backend (Vitest), `cd backend && npm test`
+
+* [`tests/settlement.integration.test.ts`](backend/tests/settlement.integration.test.ts): settlement against a real single-node MongoDB replica set started by `mongodb-memory-server`. It covers idempotent repeats, 25 concurrent confirmations of one order (exactly one increment), ownership, every provider-verification failure, a deleted product, and server-side `failCommand` failpoints (write conflict, failed write, transient commit failure, dropped commit connection).
+* [`tests/settlement.standalone.test.ts`](backend/tests/settlement.standalone.test.ts): on a standalone `mongod`, settlement must refuse and write nothing.
+* [`tests/checkout.routes.test.ts`](backend/tests/checkout.routes.test.ts): checkout HTTP contracts with real JWT cookies; only the outbound Cashfree client is stubbed.
+* [`tests/safeFetch.test.ts`](backend/tests/safeFetch.test.ts): the image-import SSRF guard against a local HTTP server.
+* [`tests/payment-recovery.integration.test.ts`](backend/tests/payment-recovery.integration.test.ts) and [`tests/cashfreeWebhook.test.ts`](backend/tests/cashfreeWebhook.test.ts): the webhook and reconciliation sweep on the replica set (duplicate deliveries, webhook racing `/confirm`, overlapping sweeps, forged and stale signatures), plus signature verification against an `openssl`-computed vector.
+* [`tests/auth.session.test.ts`](backend/tests/auth.session.test.ts): cookie attributes, the removed token endpoints and the default token lifetime.
+* [`tests/money.test.ts`](backend/tests/money.test.ts), [`tests/api.test.ts`](backend/tests/api.test.ts), [`tests/utils.test.ts`](backend/tests/utils.test.ts): exact paise conversion, health and auth middleware, validation, Helmet and CORS headers, rate-limit headers, slug utilities.
+
+The first run downloads a `mongod` binary (about 70 MB) into `~/.cache/mongodb-binaries`.
+
+### 2. Browser tests (Playwright), `cd client && npm run test:e2e`
+
+Mock-isolated tests in [`client/e2e/mocked/`](client/e2e/mocked/) run against a local production build. Every API call is answered by contract-shaped fixtures, and an unmocked call fails the test. They cover the homepage, the login and register forms (including that an invalid submit sends no request), the signed-out redirects from `/discover`, `/library` and `/dashboard/products`, and the catalog. Read-only availability checks against deployed services are in [`client/e2e/smoke/`](client/e2e/smoke/) and run only on request. See [`client/e2e/README.md`](client/e2e/README.md).
+
+Checkout is not exercised in the browser: no Cashfree session is created and no payment is made by any test.
+
+### 3. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml))
+
+On every push and pull request:
+1. `backend`: `npm ci` → `npm run typecheck` → `npm test` → `npm run build`.
+2. `frontend`: `npm ci` → `npm run typecheck` → `npm run lint` → `npm run build`.
+3. `e2e` (after `frontend`): installs Chromium and runs the mock-isolated Playwright suite.
+
+[`.github/workflows/smoke.yml`](.github/workflows/smoke.yml) runs the availability checks against deployed URLs and is triggered manually only.
+
+---
+
+## Local Development Setup
 
 ### Prerequisites
-- Node.js 20+
-- MongoDB database (or MongoDB Atlas account)
-- Cloudinary account (free tier works)
-- Cashfree account (sandbox for testing)
-- Firecrawl API key (optional, for AI import)
+* **Node.js**: v20.x or v22.x LTS
+* **MongoDB**: a replica set or sharded cluster (payment settlement uses transactions). MongoDB Atlas clusters qualify. Locally, a single-node replica set works: start `mongod --replSet rs0`, then run `rs.initiate()` once in `mongosh`.
+* **Cloudinary Account**: Free tier credentials for image uploads
+* **Cashfree Account**: Sandbox credentials for testing payments
+* **Firecrawl API Key** *(Optional)*: For AI scraping functionality
+* **Upstash Redis** *(Optional)*: For caching layer (falls back to direct MongoDB queries if omitted)
 
-### 1️⃣ Clone the Repository
+### 1. Clone the Repository
 ```bash
-git clone https://github.com/AkshayAlgoX/gamora-saas-platform.git
-cd gamora-saas-platform
+git clone https://github.com/AkshayAlgoX/gumora-saas-platform.git
+cd gumora-saas-platform
 ```
 
-### 2️⃣ Backend Setup
+### 2. Backend Setup
 ```bash
 cd backend
 npm install
 
-# Create environment file
+# Configure environment variables
 cp .env.example .env
-# Edit .env with your credentials (see Environment Variables section)
+```
 
-# Start development server
+Configure the following variables in `backend/.env`:
+
+| Variable Name | Required | Purpose | Example |
+| :--- | :--- | :--- | :--- |
+| `PORT` | Yes | Backend port | `5000` |
+| `MONGO_URI` | Yes | MongoDB connection string (replica set) | `mongodb://localhost:27017/gumora?replicaSet=rs0` |
+| `JWT_SECRET` | Yes | JWT signing secret | Output of `openssl rand -hex 32` |
+| `JWT_EXPIRES_IN` | No | Token lifetime (defaults to `7d`, the cookie lifetime) | `7d` |
+| `COOKIE_NAME` | Yes | Session cookie identifier | `gumora_session` |
+| `COOKIE_SAMESITE` | No | `lax`, `strict` or `none` (default `none`) | `lax` |
+| `CASHFREE_APP_ID` | Yes | Cashfree client application ID | Sandbox / Production App ID |
+| `CASHFREE_SECRET_KEY` | Yes | Cashfree secret key; also verifies webhook signatures | Sandbox / Production Secret |
+| `CASHFREE_ENV` | Yes | Cashfree environment mode | `sandbox` or `production` |
+| `RECONCILE_INTERVAL_MS` | No | Re-check pending orders in process every N ms (off when unset) | `300000` |
+| `CLOUDINARY_CLOUD_NAME` | Yes | Cloudinary cloud identifier | Cloud name |
+| `CLOUDINARY_API_KEY` | Yes | Cloudinary API key | API key |
+| `CLOUDINARY_API_SECRET` | Yes | Cloudinary secret | Secret string |
+| `WEB_BASE_URL` | Yes | Frontend client URL | `http://localhost:3000` |
+| `FRONTEND_ORIGIN` | Yes | CORS allowed origin | `http://localhost:3000` |
+| `UPSTASH_REDIS_REST_URL` | No | Upstash Redis REST URL | Optional |
+| `UPSTASH_REDIS_REST_TOKEN` | No | Upstash Redis REST token | Optional |
+| `FIRECRAWL_API_KEY` | No | Firecrawl API key | Optional |
+| `FIRECRAWL_API_BASE_URL` | No | Firecrawl API base URL override | Optional |
+| `SENTRY_DSN` | No | Sentry error reporting | Optional |
+
+Start the backend development server:
+```bash
 npm run dev
 ```
 
-### 3️⃣ Frontend Setup
+### 3. Frontend Setup
+In a new terminal window:
 ```bash
 cd client
 npm install
 
-# Create environment file
+# Configure environment variables
 cp .env.example .env.local
-# Edit .env.local with your settings
-
-# Start development server
-npm run dev
 ```
 
-### 4️⃣ Open the App
-```
-Frontend: http://localhost:3000
-Backend:  http://localhost:5000
-```
-
----
-
-## 🔑 Environment Variables
-
-<details>
-<summary><strong>Backend (.env)</strong></summary>
-
-```env
-# Server
-PORT=5000
-
-# Database
-MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/gumora
-
-# Authentication
-JWT_SECRET=your-super-secret-jwt-key-min-32-chars
-COOKIE_NAME=gamora_session
-
-# Cloudinary (Image Storage)
-CLOUDINARY_CLOUD_NAME=your-cloud-name
-CLOUDINARY_API_KEY=your-api-key
-CLOUDINARY_API_SECRET=your-api-secret
-
-# Cashfree (Payments)
-CASHFREE_APP_ID=your-app-id
-CASHFREE_SECRET_KEY=your-secret-key
-CASHFREE_ENV=sandbox  # or 'production'
-
-# Firecrawl (AI Import - Optional)
-FIRECRAWL_API_KEY=your-api-key
-
-# Frontend URLs
-WEB_BASE_URL=http://localhost:3000
-FRONTEND_ORIGIN=http://localhost:3000
-
-# Sentry (Error Monitoring - Optional)
-SENTRY_DSN=your-sentry-dsn
-
-# Upstash Redis (Caching - Optional)
-UPSTASH_REDIS_REST_URL=your-upstash-url
-UPSTASH_REDIS_REST_TOKEN=your-upstash-token
-```
-
-</details>
-
-<details>
-<summary><strong>Frontend (.env.local)</strong></summary>
-
+Configure `client/.env.local`:
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:5000
 NEXT_PUBLIC_CASHFREE_ENV=sandbox
 ```
 
-</details>
-
----
-
-## 🔌 API Endpoints
-
-| Method | Endpoint | Description | Auth |
-|--------|----------|-------------|------|
-| `POST` | `/api/auth/register` | Register new user | ❌ |
-| `POST` | `/api/auth/login` | Login user | ❌ |
-| `GET` | `/api/auth/me` | Get current user | ✅ |
-| `POST` | `/api/auth/logout` | Logout user | ✅ |
-| `GET` | `/api/creator/products` | List creator's products | ✅ |
-| `POST` | `/api/creator/products` | Create new product | ✅ |
-| `PUT` | `/api/creator/products/:id` | Update product | ✅ |
-| `DELETE` | `/api/creator/products/:id` | Delete product | ✅ |
-| `POST` | `/api/creator/products/import` | AI import product | ✅ |
-| `GET` | `/api/public/products` | List published products | ❌ |
-| `GET` | `/api/public/products/:slug` | Get product by slug | ❌ |
-| `POST` | `/api/checkout/create-order` | Create payment order | ✅ |
-| `POST` | `/api/checkout/verify` | Verify payment | ❌ |
-| `GET` | `/api/library` | Get user's library | ✅ |
-| `GET` | `/api/library/:id/download` | Download asset | ✅ |
-| `GET` | `/api/creator/sales` | Get sales data | ✅ |
-
----
-
-## 🧪 Testing
-
-### Run Unit Tests
+Start the Next.js development server:
 ```bash
-cd backend
-npm test                 # Run once
-npm run test:watch       # Watch mode
-npm run test:coverage    # With coverage report
+npm run dev
 ```
 
-### Run E2E Tests
-```bash
-cd client
-npm run test:e2e         # Headless
-npm run test:e2e:ui      # Interactive UI
-```
+Open [**http://localhost:3000**](http://localhost:3000) to view the application.
 
 ---
 
-## 📦 Project Structure
+## Repository Structure
 
-```
-gamora-saas-platform/
+```text
+gumora-saas-platform/
 ├── .github/
 │   └── workflows/
 │       └── ci.yml              # GitHub Actions CI/CD pipeline
 ├── backend/
 │   ├── src/
-│   │   ├── app.ts              # Express app setup
-│   │   ├── server.ts           # Server entry point
-│   │   ├── db.ts               # MongoDB connection
-│   │   ├── lib/                # Utilities
-│   │   │   ├── auth.ts         # JWT helpers
-│   │   │   ├── cashfree.ts     # Payment gateway
-│   │   │   ├── cloudinary.ts   # Image upload
-│   │   │   ├── firecrawl.ts    # AI scraping
-│   │   │   ├── cache.ts        # Redis caching
-│   │   │   └── sentry.ts       # Error tracking
+│   │   ├── app.ts              # Express application factory & middleware
+│   │   ├── server.ts           # Server initialization & database bootstrap
+│   │   ├── db.ts               # Mongoose MongoDB connection
+│   │   ├── lib/
+│   │   │   ├── auth.ts         # bcrypt password hashing & JWT helpers
+│   │   │   ├── cache.ts        # Upstash Redis caching & SCAN invalidation
+│   │   │   ├── cashfree.ts     # Cashfree PG axios client
+│   │   │   ├── cloudinary.ts   # Cloudinary buffer upload integration
+│   │   │   ├── downloadImage.ts# Image buffer fetching & Sharp inspection
+│   │   │   ├── firecrawl.ts    # Firecrawl web scraping integration
+│   │   │   └── sentry.ts       # Sentry error monitoring configuration
 │   │   ├── middleware/
-│   │   │   └── requireAuth.ts  # Auth middleware
-│   │   ├── models/             # MongoDB schemas
-│   │   │   ├── Users.ts
-│   │   │   ├── Product.ts
-│   │   │   ├── Order.ts
-│   │   │   └── ImageAsset.ts
-│   │   ├── routes/             # API routes
-│   │   │   ├── auth.ts
-│   │   │   ├── checkout.ts
-│   │   │   ├── creatorProduct.ts
-│   │   │   ├── creatorSales.ts
-│   │   │   ├── library.ts
-│   │   │   └── publicProduct.ts
-│   │   └── utils/
-│   │       └── slug.ts
-│   ├── tests/                  # Unit tests
-│   ├── vitest.config.ts
+│   │   │   └── requireAuth.ts  # Cookie JWT verification & user injection
+│   │   ├── models/             # Mongoose schemas (User, Product, Order, ImageAsset)
+│   │   ├── routes/             # REST endpoints (auth, checkout, creator, library, public)
+│   │   └── utils/              # Slug generation & uniqueness collision resolver
+│   ├── tests/                  # Vitest unit & middleware tests
 │   ├── tsconfig.json
 │   └── package.json
 ├── client/
 │   ├── src/
-│   │   ├── app/                # Next.js App Router
-│   │   │   ├── (auth)/         # Auth pages
-│   │   │   ├── (buyer)/        # Buyer pages
-│   │   │   ├── (creator)/      # Creator dashboard
-│   │   │   └── api/            # API proxy
-│   │   └── lib/                # Client utilities
-│   ├── components/             # React components
-│   ├── e2e/                    # Playwright tests
+│   │   ├── app/                # Next.js 16 App Router pages
+│   │   │   ├── (auth)/         # Login & registration flows
+│   │   │   ├── (buyer)/        # Discovery catalog, library, checkout
+│   │   │   ├── (creator)/      # Creator dashboard, product editor, sales
+│   │   │   └── api/            # Client-side API proxy routes
+│   │   └── lib/                # API client & TypeScript interfaces
+│   ├── components/             # Reusable React components (Radix UI + Tailwind)
+│   ├── e2e/                    # Playwright end-to-end tests
 │   ├── playwright.config.ts
 │   └── package.json
-├── screens/                    # Screenshots (add your own)
+├── screens/                    # Authentic application walkthrough screenshots
 └── README.md
 ```
 
 ---
 
-## 🔒 Security Implementation
+## Known Limitations
 
-| Feature | Implementation |
-|---------|----------------|
-| **HTTP Headers** | Helmet.js with strict CSP |
-| **Rate Limiting** | 10 auth / 100 API requests per 15 min |
-| **Authentication** | JWT with HTTP-only, SameSite cookies |
-| **Password Hashing** | bcrypt with salt rounds |
-| **Input Validation** | Zod schema validation on all inputs |
-| **CORS** | Whitelist-based origin control |
-| **Error Handling** | Sanitized error messages, Sentry logging |
+* **No live backend.** The public API is suspended (see [Deployment Status](#deployment-status)).
+* **Webhook not exercised against Cashfree.** The webhook and sweep are tested with a stubbed Cashfree client. The signature scheme follows Cashfree's documentation but has not been checked with a real sandbox delivery, and the webhook URL must be configured in the Cashfree dashboard.
+* **No CSRF token.** With `COOKIE_SAMESITE=none`, cross-site protection rests on JSON-only request bodies and the CORS allow-list ([`docs/authentication.md`](docs/authentication.md)).
+* **Client-side route protection.** Protected pages redirect signed-out visitors after calling `/api/auth/me`. This is a usability measure; the API enforces authentication.
+* **Third-party images.** The homepage decorations are loaded from `assets.gumroad.com`.
 
 ---
 
-## 🚀 Deployment
+## Authorship & Project Attribution
 
-### Frontend → Vercel
-1. Connect GitHub repo to Vercel
-2. Set environment variables in dashboard
-3. Auto-deploys on push to `main`
-
-### Backend → Render
-1. Create Web Service on Render
-2. Connect GitHub repo
-3. Build command: `npm install && npm run build`
-4. Start command: `npm start`
-5. Add environment variables
-
----
-
-##  Challenges Faced & Learnings
-
-<details>
-<summary><strong>🔧 Cross-Origin Cookie Handling</strong></summary>
-
-**Challenge:** JWT cookies not being sent from Vercel frontend to Render backend due to cross-origin restrictions.
-
-**Solution:** Implemented HTTP-only cookies with `SameSite=None; Secure` and proper CORS configuration with `credentials: true`.
-
-</details>
-
-<details>
-<summary><strong>⚡ Payment Webhook Verification</strong></summary>
-
-**Challenge:** Cashfree webhooks were failing due to signature verification issues.
-
-**Solution:** Created a separate unauthenticated endpoint for webhooks and implemented proper signature verification using HMAC-SHA256.
-
-</details>
-
-<details>
-<summary><strong>🤖 AI Content Import</strong></summary>
-
-**Challenge:** Extracting structured product data from arbitrary product pages.
-
-**Solution:** Integrated Firecrawl with custom JSON schema extraction to reliably parse product names, descriptions, prices, and images.
-
-</details>
-
----
-
-## 📋 Resume-Ready Summary
-
-> **Copy this for your resume:**
-
-```
-Built a full-stack SaaS platform (Gumora) enabling creators to sell digital products.
-Implemented AI-powered content import using Firecrawl, secure payment processing via
-Cashfree, JWT authentication with cross-origin cookie handling, and real-time sales
-analytics. Features include Redis caching, Sentry error monitoring, CI/CD pipeline
-with GitHub Actions, and comprehensive test coverage using Vitest and Playwright.
-Tech: Next.js, React, TypeScript, Express.js, MongoDB, Redis, Cloudinary.
-```
-
----
-
-## 👨‍💻 About the Developer
-
-Built with ❤️ by **Akshay** 
-
-- 🔗 GitHub: [@AkshayAlgoX](https://github.com/AkshayAlgoX)
-- 🌐 Live Demo: [gumora.shop](https://gumora.shop)
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-<p align="center">
-  <strong>⭐ Star this repo if you found it helpful!</strong>
-</p>
+* **Author:** Akshaya R ([@AkshayAlgoX](https://github.com/AkshayAlgoX))
+* **License:** MIT License. See [LICENSE](LICENSE) for details.
