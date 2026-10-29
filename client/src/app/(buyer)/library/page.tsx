@@ -40,42 +40,20 @@ function LibraryContent() {
           localStorage.setItem("pending_order_id", dbOrderId);
         }
 
+        // Remove the bearer copy that older builds stored before checkout.
+        localStorage.removeItem("session_token");
+
         // Check auth first: settlement is confirmed as the logged-in buyer.
         const authRes = await fetch(`${API}/api/auth/me`, { credentials: "include" });
-        let authData = await authRes.json();
+        const authData = await authRes.json();
         
         console.log("Auth check result:", authData);
         
-        // If not authenticated, try to restore session from stored token
+        // The session lives only in the HttpOnly cookie. If it is missing,
+        // send the buyer to log in and come back; the pending order id is
+        // kept so the purchase is confirmed after login.
         if (!authData?.user) {
-          const storedToken = localStorage.getItem("session_token");
-          if (storedToken) {
-            console.log("Trying to restore session from stored token...");
-            try {
-              const refreshRes = await fetch(`${API}/api/auth/refresh-session`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({ token: storedToken }),
-              });
-              const refreshData = await refreshRes.json();
-              console.log("Session refresh result:", refreshData);
-              
-              if (refreshData?.ok && refreshData?.user) {
-                authData = refreshData;
-                // Clear the stored token after successful refresh
-                localStorage.removeItem("session_token");
-              }
-            } catch (refreshErr) {
-              console.error("Session refresh error:", refreshErr);
-            }
-          }
-        }
-        
-        if (!authData?.user) {
-          // Still not authenticated - clear stored token and redirect to login
-          localStorage.removeItem("session_token");
-          router.push("/login");
+          router.push("/login?next=/library");
           return;
         }
         setIsAuth(true);
@@ -113,8 +91,7 @@ function LibraryContent() {
       } catch (err) {
         console.error("Library error:", err);
         localStorage.removeItem("pending_order_id");
-        localStorage.removeItem("session_token");
-        router.push("/login");
+        router.push("/login?next=/library");
       } finally {
         setLoading(false);
       }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import LoginForm from "components/auth/login-form";
 import Link from "next/link";
+import { nextFromLocation } from "@/lib/auth/safe-next";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -20,7 +21,7 @@ export default function LoginPage() {
         const data = await res.json();
         if (data?.user) {
           // Already logged in - redirect immediately, don't show anything
-          window.location.href = "/dashboard/products";
+          window.location.href = nextFromLocation();
           return;
         }
       } catch (err) {
